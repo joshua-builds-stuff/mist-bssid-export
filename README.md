@@ -1,9 +1,13 @@
 # Mist BSSID Export
 
 Standalone CLI that exports AP radio MACs (BSSIDs) from a Juniper Mist
-organization to CSV. Each radio MAC covers up to 16 BSSIDs (last octet 0-F),
-so the exported radio MACs are the base addresses for every BSSID an AP can
-broadcast — useful for location services, WIPS allowlists, and RF audits.
+organization to CSV for **E911 integration**. E911 / dispatchable-location
+platforms (RedSky, Intrado, Bandwidth, and similar) map Wi-Fi BSSIDs to
+civic addresses and floors so that an emergency call from a Wi-Fi device
+reports a dispatchable location — a requirement driven by regulations such
+as RAY BAUM'S Act and Kari's Law in the US. This export produces the
+AP-to-location data those platforms consume: each AP's radio base MACs
+alongside its site street address, floorplan, and wired uplink.
 
 Inspired by [mist-get_bssid](https://github.com/allynjcrowe/mist-get_bssid)
 by [Allyn Crowe](https://github.com/allynjcrowe), Principal Engineer @ Nexum.
@@ -22,6 +26,10 @@ configuration. For added assurance, run it with an API token created with
 **Read privileges only** (e.g., an Observer-role token) — with such a token,
 configuration changes are impossible at the API level regardless of what any
 script does.
+
+This tool extracts data only — it does not by itself provide or guarantee
+E911 regulatory compliance. Validate all exported data with your E911
+service provider.
 
 ## Setup
 
@@ -83,20 +91,37 @@ command-line arguments), `3` file error, `130` cancelled.
 | Column | Contents |
 |--------|----------|
 | `NAME` | AP name |
-| `MAP` | Floorplan/map the AP is placed on |
+| `MAP` | Floorplan/map the AP is placed on — floor/area granularity for the dispatchable location |
 | `AP_MAC` | AP Ethernet MAC |
 | `SITE` | Site name |
-| `SITE_ADDRESS` | Site street address |
+| `SITE_ADDRESS` | Site street address — the civic address for the dispatchable location |
 | `RADIO_MACS` | Radio base MACs (2.4 GHz, 5 GHz, 6 GHz) — 16 BSSIDs each |
-| `SWITCH_NAME` | LLDP neighbor system name |
-| `SWITCH_PORT` | LLDP neighbor port |
+| `SWITCH_NAME` | LLDP neighbor system name (supports wiremap-based location) |
+| `SWITCH_PORT` | LLDP neighbor port (supports wiremap-based location) |
+
+## E911 integration notes
+
+- **Each radio MAC is a base address.** An AP broadcasts up to 16 BSSIDs
+  per radio by varying the last hex digit (0-F) of the radio MAC. Most
+  E911 platforms accept masked/wildcard BSSID entries — enter each radio
+  MAC with the last digit wildcarded, or expand it to all 16 BSSIDs if
+  your provider requires explicit entries.
+- **Keep the export current.** BSSIDs change when an AP is replaced (RMA,
+  refresh) and appear when APs are added. Re-run the export and re-upload
+  to your E911 platform after any hardware change, and consider a
+  scheduled re-run as a safety net.
+- **Export with APs online.** Radio MACs come from live AP stats; offline
+  APs export with an empty `RADIO_MACS` column, so generate the E911
+  upload while APs are connected.
+- **Verify site addresses in Mist first.** `SITE_ADDRESS` comes straight
+  from the Mist site configuration — the dispatchable location is only as
+  accurate as the address entered there, and floor granularity depends on
+  APs being placed on their floorplans (`MAP` column).
 
 ## Notes
 
 - Only APs assigned to a site are exported (unassigned inventory has no
   radio stats).
-- Offline APs appear with empty `RADIO_MACS` if the cloud has no cached
-  radio stats for them.
 - All API calls are read-only GETs; 429/5xx responses are retried with
   backoff.
 
