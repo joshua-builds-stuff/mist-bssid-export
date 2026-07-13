@@ -8,6 +8,19 @@ broadcast — useful for location services, WIPS allowlists, and RF audits.
 Inspired by [mist-get_bssid](https://github.com/allynjcrowe/mist-get_bssid)
 by [Allyn Crowe](https://github.com/allynjcrowe), Principal Engineer @ Nexum.
 
+## Disclaimer
+
+This tool is provided **as is**, without warranty of any kind. It is a
+community project and is **not** an official Juniper Networks product — it
+is not endorsed or supported by Juniper Networks, and Juniper TAC will not
+assist with it. Use at your own risk.
+
+The tool only issues read-only (GET) API calls and never modifies any
+configuration. For added assurance, run it with an API token created with
+**Read privileges only** (e.g., an Observer-role token) — with such a token,
+configuration changes are impossible at the API level regardless of what any
+script does.
+
 ## Setup
 
 Requires Python 3.10+.
