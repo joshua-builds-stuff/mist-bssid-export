@@ -8,10 +8,11 @@ in the export are the base addresses for every BSSID an AP can broadcast.
 Inspired by mist-get_bssid by Allyn Crowe, Principal Engineer @ Nexum
 (https://github.com/allynjcrowe).
 
-Provided as is, without warranty of any kind; not an official Juniper
-Networks product and not supported by Juniper Networks. The tool only
-issues read-only (GET) API calls - use a token created with Read
-privileges only to guarantee no configuration changes are possible.
+Provided as is, without warranty of any kind; not an official Hewlett
+Packard Enterprise (HPE) product and not supported by HPE or HPE Juniper
+Networking (formerly Juniper Networks). The tool only issues read-only
+(GET) API calls - use a token created with Read privileges only to
+guarantee no configuration changes are possible.
 
 Run with no arguments for an interactive menu; on first run it walks you
 through creating the .env configuration. With arguments it acts as a

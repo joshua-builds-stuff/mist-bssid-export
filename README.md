@@ -11,9 +11,11 @@ by [Allyn Crowe](https://github.com/allynjcrowe), Principal Engineer @ Nexum.
 ## Disclaimer
 
 This tool is provided **as is**, without warranty of any kind. It is a
-community project and is **not** an official Juniper Networks product — it
-is not endorsed or supported by Juniper Networks, and Juniper TAC will not
-assist with it. Use at your own risk.
+community project and is **not** an official Hewlett Packard Enterprise
+(HPE) product. The Mist platform is part of HPE Juniper Networking
+(formerly Juniper Networks, acquired by HPE in 2025) — this tool is not
+endorsed or supported by HPE, HPE Juniper Networking, or their technical
+support organizations (TAC). Use at your own risk.
 
 The tool only issues read-only (GET) API calls and never modifies any
 configuration. For added assurance, run it with an API token created with
