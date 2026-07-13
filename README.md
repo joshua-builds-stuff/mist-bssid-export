@@ -130,3 +130,7 @@ command-line arguments), `3` file error, `130` cancelled.
 ```
 python -m unittest discover tests -v
 ```
+
+## License
+
+[MIT](LICENSE)
