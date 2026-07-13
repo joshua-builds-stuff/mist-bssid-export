@@ -5,6 +5,9 @@ Exports AP radio MACs (BSSIDs) from a Juniper Mist organization to CSV.
 Each radio MAC covers up to 16 BSSIDs (last octet 0-F), so the radio MACs
 in the export are the base addresses for every BSSID an AP can broadcast.
 
+Inspired by mist-get_bssid by Allyn Crowe, Principal Engineer @ Nexum
+(https://github.com/allynjcrowe).
+
 Run with no arguments for an interactive menu; on first run it walks you
 through creating the .env configuration. With arguments it acts as a
 non-interactive CLI:

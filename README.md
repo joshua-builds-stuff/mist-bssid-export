@@ -5,6 +5,9 @@ organization to CSV. Each radio MAC covers up to 16 BSSIDs (last octet 0-F),
 so the exported radio MACs are the base addresses for every BSSID an AP can
 broadcast — useful for location services, WIPS allowlists, and RF audits.
 
+Inspired by [mist-get_bssid](https://github.com/allynjcrowe/mist-get_bssid)
+by [Allyn Crowe](https://github.com/allynjcrowe), Principal Engineer @ Nexum.
+
 ## Setup
 
 Requires Python 3.10+.
