@@ -61,6 +61,11 @@ four keys override `.env`. Save `.env` as plain UTF-8 (UTF-8 with BOM also
 works; UTF-16 — what PowerShell 5.1 `>` redirection produces — is rejected
 with a clear error).
 
+Unquoted values are cut at an inline comment (` #`). A single- or
+double-quoted value keeps everything inside the quotes, including `#`, and
+a comment after the closing quote is ignored. Quote a token that contains
+`#`.
+
 ### API URL allowlist
 
 `MIST_API_URL` must use `https://`. The hostname must be one of the hosts
@@ -108,49 +113,78 @@ cloud directly from the host that runs the export.
 
 ## Usage
 
+Selection rules, paging, and how each column is filled are written out in
+[docs/usage.md](docs/usage.md).
+
 ```
 python bssid_export.py                        # interactive menu
 python bssid_export.py --all                  # export the entire org
 python bssid_export.py --sites "HQ,Branch 7"  # only these sites (names or IDs)
+python bssid_export.py --sites "Dallas, TX"   # one site whose name contains a comma
 python bssid_export.py --site-group Campus    # only sites in this site group
 python bssid_export.py --list-sites           # show org sites and exit
 python bssid_export.py --list-groups          # show org site groups and exit
 python bssid_export.py -o C:\exports          # write CSV into a directory
 python bssid_export.py -o out.csv             # write CSV to a specific file
+python bssid_export.py -o ~/exports           # ~ expands to the home directory
 python bssid_export.py --env C:\path\to\.env  # use a specific .env file
 ```
 
+Site and site-group names match regardless of case. Site IDs and
+site-group IDs match regardless of case as well, on the CLI and in the
+interactive prompts.
+
 Site names containing commas: an argument that is exactly one site's name
-(`--sites "Dallas, TX"`) is taken as that site. To combine it with others,
-wrap it in double quotes inside the list (`--sites 'HQ,"Dallas, TX"'`),
-repeat `--sites` once per site, or pass the site ID. The interactive site
-prompt follows the same rules.
+or ID (`--sites "Dallas, TX"`) is kept whole and is not split on the
+comma. To combine it with others, wrap the name in double quotes inside
+the list (`--sites 'HQ,"Dallas, TX"'`), repeat `--sites` once per site, or
+pass the site ID. The interactive site prompt follows the same rules.
+
+`--site-group` takes one name or one ID (it is not a comma-separated
+list). Mist does not require group names to be unique. If more than one
+group shares that name (compared without regard to case), the tool
+errors and prints each group's name and ID instead of exporting the
+first match. Pass the group ID. In the menu, the list number or the
+group ID selects one group. That error is a configuration error (exit
+`1` on the CLI).
 
 With no arguments the tool opens a menu (export entire org / selected
 sites / a site group, list sites/groups, reconfigure credentials). If no
 valid configuration exists yet, it walks you through org ID, API token,
 and cloud selection, validates them against the cloud, and saves `.env`
 next to the script. Any argument (other than `--env`) switches to
-non-interactive CLI mode.
+non-interactive CLI mode. In the menu, a configuration or API error is
+printed and the menu stays open; the exit codes below apply to CLI mode.
 
 Default output file: `<OrgName>.bssid-export-<timestamp>.csv` in the current
 directory. A `-o` path without a file extension is treated as a directory and
 created if needed; a path ending in `.csv` (or any extension) is the exact
-output file.
+output file. A leading `~` in `-o` or in the menu's output prompt expands
+to the home directory (`USERPROFILE` on Windows, `HOME` otherwise). The
+menu never passes the path through a shell, so type `~/exports` there
+when you want the home directory rather than a folder named `~`.
 
 Exit codes: `0` success, `1` configuration error, `2` API error (or invalid
 command-line arguments), `3` file error, `130` cancelled.
 
-If any API call fails after retries — including a single site's device
-stats or maps — the export stops with a non-zero exit code and no CSV is
-written; an existing file at the output path is left untouched.
+If a fetch fails after retries — org AP stats on an org-wide export, or
+any site's device stats or maps — the CLI exits `2`. The CSV is written
+to a temporary file in the destination directory and moved into place
+only after that write finishes, so a failed run does not replace an
+existing CSV and does not leave the temporary file behind. When the
+destination did not exist yet, no CSV is created.
+
+An org-wide export (`--all`, or menu option 1) loads AP stats with one
+paged org query. `--sites` and `--site-group` load device stats per site.
+Both paths page every list they read. Details are in
+[docs/usage.md](docs/usage.md).
 
 ## CSV columns
 
 | Column | Contents |
 |--------|----------|
-| `NAME` | AP name |
-| `MAP` | Floorplan/map the AP is placed on — floor/area granularity for the dispatchable location |
+| `NAME` | AP name from device stats when that field is a non-empty string; otherwise the inventory `name`, then the inventory `hostname` |
+| `MAP` | Floorplan/map the AP is placed on — floor/area granularity for the dispatchable location. Map names come from every page of the site's maps |
 | `AP_MAC` | AP Ethernet MAC |
 | `SITE` | Site name |
 | `SITE_ADDRESS` | Site street address — the civic address for the dispatchable location |
@@ -207,11 +241,20 @@ process stay unused too. See
 
 Keep using a read-only token. Put one allowlisted cloud in `.env` (or in
 the process environment, which wins over `.env` for those four keys).
+Quote a `.env` value that contains `#`, so an inline comment does not
+cut the token short. The same rules are collected in
+[SECURITY.md](SECURITY.md).
 
 ## Notes
 
 - Only APs assigned to a site are exported (unassigned inventory has no
-  radio stats).
+  radio stats). Org inventory is requested with `type=ap` and paged;
+  a row that is not an AP, has no site, or has no MAC is omitted.
+- Org sites, site groups, site maps, and device stats are read page by
+  page, so a site, floorplan, or AP past the first page is still exported.
+- A device-stats row whose MAC is null, missing, or not a string is
+  skipped. The export continues. An assigned AP that never appears in
+  stats is still written, with an empty `RADIO_MACS`.
 - All API calls are read-only GETs; 429/5xx responses are retried with
   backoff.
 
