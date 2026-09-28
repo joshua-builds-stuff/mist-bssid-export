@@ -70,6 +70,8 @@ MAX_RETRIES = 3
 INVENTORY_PAGE_SIZE = 1000
 # Mist list endpoints accept limit 1-1000 and report paging in X-Page-* headers
 PAGE_SIZE = 1000
+# The org-level stats endpoint returns a subset of fields unless asked
+ORG_STATS_FIELDS = 'mac,site_id,name,map_id,status,radio_stat,lldp_stat'
 
 CLOUD_ENDPOINTS = {
     'global01': 'https://api.mist.com',
@@ -398,6 +400,16 @@ def extract_radio_macs(stat: dict) -> list[str]:
     return macs
 
 
+def _missing_stat_fields(stats: list[dict]) -> bool:
+    """True if a connected AP's org stats lack radio_stat.
+
+    The org stats endpoint only returns the fields asked for; if the cloud
+    ever drops one, fall back to the per-site endpoint (full objects) rather
+    than exporting blank radio MACs.
+    """
+    return any(s.get('status') == 'connected' and 'radio_stat' not in s for s in stats)
+
+
 def sanitize_filename(name: str) -> str:
     """Sanitize a string for use in a filename."""
     name = name.replace(' ', '_')
@@ -545,7 +557,17 @@ def export_bssids(
 
     print(f"Found {len(assigned_aps)} AP(s) across {len(aps_by_site)} site(s)")
 
-    # Fetch bulk device stats + maps per site
+    # Org-wide: one paged org stats query instead of one stats call per site
+    org_stats_by_site: dict[str, list[dict]] | None = None
+    if target_site_ids is None:
+        print("Fetching AP stats...")
+        org_stats_by_site = {}
+        for stat in api.get_all_pages(
+            f"/api/v1/orgs/{org_id}/stats/devices?type=ap&fields={ORG_STATS_FIELDS}"
+        ):
+            org_stats_by_site.setdefault(stat.get('site_id', ''), []).append(stat)
+
+    # Fetch maps (and, for scoped exports, device stats) per site
     stats_lookup = {}
     site_ids = list(aps_by_site.keys())
     for idx, site_id in enumerate(site_ids, 1):
@@ -562,13 +584,18 @@ def export_bssids(
             raise
         maps = {m['id']: m.get('name', '') for m in map_data if 'id' in m}
 
-        try:
-            device_stats = api.get_all_pages(
-                f"/api/v1/sites/{site_id}/stats/devices?type=ap"
-            )
-        except Exception:
-            print(f"    Could not fetch device stats for site {site_name}", file=sys.stderr)
-            raise
+        device_stats = []
+        site_org_stats = (org_stats_by_site or {}).get(site_id, [])
+        if org_stats_by_site is not None and not _missing_stat_fields(site_org_stats):
+            device_stats = site_org_stats
+        else:
+            try:
+                device_stats = api.get_all_pages(
+                    f"/api/v1/sites/{site_id}/stats/devices?type=ap"
+                )
+            except Exception:
+                print(f"    Could not fetch device stats for site {site_name}", file=sys.stderr)
+                raise
 
         for stat in device_stats:
             norm = normalize_mac(stat.get('mac', ''))

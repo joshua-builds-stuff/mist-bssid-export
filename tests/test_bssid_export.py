@@ -327,7 +327,9 @@ class TestFetchSitesAndGroups(unittest.TestCase):
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 'last'},
             ],
             '/api/v1/sites/last/maps': [],
-            paged('/api/v1/sites/last/stats/devices?type=ap', 1): [],
+            paged(
+                f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}', 1
+            ): [],
         })
         sites = be.fetch_sites(api, 'o1')
         self.assertEqual(len(sites), size + 1)
@@ -373,7 +375,21 @@ class TestFetchInventoryAps(unittest.TestCase):
 
 
 class TestExport(unittest.TestCase):
-    def _make_api(self):
+    S1_STATS = [
+        {'mac': 'aabbcc000001', 'site_id': 's1', 'name': 'AP-1', 'map_id': 'm1',
+         'status': 'connected',
+         'radio_stat': {'band_24': {'mac': 'radio24'}, 'band_5': {'mac': 'radio5'}},
+         'lldp_stat': {'system_name': 'sw1', 'port_id': 'ge-0/0/1'}},
+        {'mac': 'ddeeff000009', 'site_id': 's1', 'name': 'not-in-inventory'},
+    ]
+    S2_STATS = [
+        {'mac': 'AA:BB:CC:00:00:02', 'site_id': 's2', 'name': 'AP-2', 'radio_stat': None,
+         'lldp_stat': None},
+    ]
+    ORG_STATS_PATH = paged(
+        f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}', 1)
+
+    def _make_api(self, org_stats=None):
         return FakeApi({
             f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
@@ -382,17 +398,40 @@ class TestExport(unittest.TestCase):
             ],
             '/api/v1/sites/s1/maps': [{'id': 'm1', 'name': 'Floor 1'}],
             '/api/v1/sites/s2/maps': [],
-            paged('/api/v1/sites/s1/stats/devices?type=ap', 1): [
-                {'mac': 'aabbcc000001', 'name': 'AP-1', 'map_id': 'm1',
-                 'radio_stat': {'band_24': {'mac': 'radio24'}, 'band_5': {'mac': 'radio5'}},
-                 'lldp_stat': {'system_name': 'sw1', 'port_id': 'ge-0/0/1'}},
-                {'mac': 'ddeeff000009', 'name': 'not-in-inventory'},
-            ],
-            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): [
-                {'mac': 'AA:BB:CC:00:00:02', 'name': 'AP-2', 'radio_stat': None,
-                 'lldp_stat': None},
-            ],
+            self.ORG_STATS_PATH: (self.S1_STATS + self.S2_STATS
+                                  if org_stats is None else org_stats),
+            paged('/api/v1/sites/s1/stats/devices?type=ap', 1): self.S1_STATS,
+            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): self.S2_STATS,
         })
+
+    def test_org_wide_uses_single_org_stats_query(self):
+        api = self._make_api()
+        with tempfile.TemporaryDirectory() as tmp:
+            be.export_bssids(api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'o.csv')
+        self.assertEqual([c for c in api.calls if 'stats' in c], [self.ORG_STATS_PATH])
+        self.assertIn('radio_stat', self.ORG_STATS_PATH)
+        self.assertIn('lldp_stat', self.ORG_STATS_PATH)
+
+    def test_org_stats_missing_radio_stat_falls_back_per_site(self):
+        s1_trimmed = [{k: v for k, v in s.items() if k != 'radio_stat'}
+                      for s in self.S1_STATS]
+        api = self._make_api(org_stats=s1_trimmed + self.S2_STATS)
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(
+                api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'o.csv')
+            with open(path, newline='', encoding='utf-8') as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual(rows[0]['RADIO_MACS'], 'radio24, radio5')
+        stats_calls = [c for c in api.calls if 'stats' in c]
+        self.assertEqual(stats_calls, [self.ORG_STATS_PATH,
+                                       paged('/api/v1/sites/s1/stats/devices?type=ap', 1)])
+
+    def test_scoped_export_uses_per_site_stats(self):
+        api = self._make_api()
+        with tempfile.TemporaryDirectory() as tmp:
+            be.export_bssids(api, 'o1', 'My Org', self.SITES, {'s2'}, Path(tmp) / 'o.csv')
+        self.assertEqual([c for c in api.calls if 'stats' in c],
+                         [paged('/api/v1/sites/s2/stats/devices?type=ap', 1)])
 
     SITES = [
         {'id': 's1', 'name': 'HQ', 'address': '1 Main St'},
@@ -438,8 +477,9 @@ class TestExport(unittest.TestCase):
                 {'X-Page-Total': '2', 'X-Page-Limit': '1'}),
         })
         with tempfile.TemporaryDirectory() as tmp:
+            # Scoped export still pages the per-site stats endpoint.
             path, _ = be.export_bssids(
-                api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'out.csv')
+                api, 'o1', 'My Org', self.SITES, {'s1'}, Path(tmp) / 'out.csv')
             with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
         self.assertEqual([r['RADIO_MACS'] for r in rows], ['r1', 'r2'])
@@ -458,7 +498,8 @@ class TestExport(unittest.TestCase):
         return api
 
     def test_stats_failure_aborts_and_keeps_previous_csv(self):
-        for failing in ('/api/v1/sites/s2/stats/devices?type=ap', '/api/v1/sites/s1/maps'):
+        org_stats = f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}'
+        for failing in (org_stats, '/api/v1/sites/s1/maps'):
             with self.subTest(failing=failing), tempfile.TemporaryDirectory() as tmp:
                 out = Path(tmp) / 'out.csv'
                 out.write_text('previous good export\n', encoding='utf-8')
@@ -469,7 +510,8 @@ class TestExport(unittest.TestCase):
                 self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ['out.csv'])
 
     def test_stats_failure_exits_nonzero(self):
-        api = self._failing_api('/api/v1/sites/s1/stats/devices?type=ap')
+        api = self._failing_api(
+            f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}')
         with tempfile.TemporaryDirectory() as tmp, \
              patch.object(be, 'load_config', return_value={
                  'api_url': 'https://api.mist.com', 'api_token': 't', 'org_id': 'o1'}), \
