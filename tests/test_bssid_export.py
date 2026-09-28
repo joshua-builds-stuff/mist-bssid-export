@@ -216,6 +216,20 @@ class TestResolveScope(unittest.TestCase):
         with self.assertRaises(be.ConfigError):
             be.resolve_scope(self.SITES, self.GROUPS, None, 'nope')
 
+    def test_ids_match_case_insensitively(self):
+        sites = [{'id': 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee', 'name': 'HQ'}]
+        groups = [{'id': '11111111-2222-3333-4444-5555555555aa', 'name': 'G',
+                   'site_ids': ['aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee']}]
+        expected = {'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee'}
+        self.assertEqual(be.resolve_scope(
+            sites, [], 'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE', None), expected)
+        self.assertEqual(be.resolve_scope(
+            sites, groups, None, '11111111-2222-3333-4444-5555555555AA'), expected)
+        self.assertEqual(be.parse_site_selection(
+            'AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE', sites), expected)
+        self.assertIs(be.match_group(
+            '11111111-2222-3333-4444-5555555555AA', groups), groups[0])
+
     def test_empty_group(self):
         with self.assertRaises(be.ConfigError):
             be.resolve_scope(self.SITES, self.GROUPS, None, 'Empty')
