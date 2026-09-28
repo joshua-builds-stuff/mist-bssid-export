@@ -124,6 +124,15 @@ class TestLoadEnv(unittest.TestCase):
     def test_missing_file(self):
         self.assertFalse(be.load_env(Path('Z:/does/not/exist/.env')))
 
+    def test_ignores_non_mist_environment_variables(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / '.env'
+            env_file.write_text('HTTPS_PROXY=https://proxy.example\n', encoding='utf-8')
+            with patch.dict(os.environ, {}, clear=False):
+                os.environ.pop('HTTPS_PROXY', None)
+                be.load_env(env_file)
+                self.assertNotIn('HTTPS_PROXY', os.environ)
+
     def test_utf8_bom(self):
         with tempfile.TemporaryDirectory() as tmp:
             env_file = Path(tmp) / '.env'
@@ -155,6 +164,12 @@ class TestLoadEnv(unittest.TestCase):
                 be.load_env(env_file)
                 self.assertEqual(os.environ['MIST_ORG_ID'], 'abc123')
                 self.assertEqual(os.environ['MIST_API_TOKEN'], 'tok#with#hash')
+
+
+class TestMistSession(unittest.TestCase):
+    def test_does_not_trust_proxy_or_ca_environment(self):
+        session = be.MistSession('https://api.mist.com', 'dummy-token')
+        self.assertFalse(session.session.trust_env)
 
 
 class TestResolveScope(unittest.TestCase):
