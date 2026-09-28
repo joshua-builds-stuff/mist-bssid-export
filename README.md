@@ -158,6 +158,10 @@ written; an existing file at the output path is left untouched.
 | `SWITCH_NAME` | LLDP neighbor system name (supports wiremap-based location) |
 | `SWITCH_PORT` | LLDP neighbor port (supports wiremap-based location) |
 
+The CSV is UTF-8 with a byte-order mark (BOM) so Excel displays non-ASCII
+site names and addresses (e.g. `São Paulo`) correctly. Tools that read
+UTF-8 skip the BOM; in Python, open the file with `encoding='utf-8-sig'`.
+
 ## E911 integration notes
 
 - **Each radio MAC is a base address.** An AP broadcasts up to 16 BSSIDs
