@@ -571,7 +571,10 @@ def export_bssids(
             raise
 
         for stat in device_stats:
-            norm = normalize_mac(stat.get('mac', ''))
+            mac = stat.get('mac')
+            if not isinstance(mac, str) or not mac:
+                continue
+            norm = normalize_mac(mac)
             if norm not in assigned_aps:
                 continue
             stats_lookup[norm] = {

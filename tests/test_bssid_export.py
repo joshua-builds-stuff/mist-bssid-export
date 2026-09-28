@@ -494,6 +494,21 @@ class TestExport(unittest.TestCase):
             self.assertEqual(rows[0]['SITE'], 'São Paulo')
             self.assertEqual(rows[0]['SITE_ADDRESS'], '1 Avenida Café')
 
+    def test_null_stats_mac_is_skipped(self):
+        api = self._make_api()
+        api.responses[paged('/api/v1/sites/s1/stats/devices?type=ap', 1)].insert(
+            0, {'mac': None, 'name': 'ghost'})
+        api.responses[paged('/api/v1/sites/s2/stats/devices?type=ap', 1)].append(
+            {'name': 'no-mac'})
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'out.csv'
+            path, count = be.export_bssids(api, 'o1', 'My Org', self.SITES, None, out)
+            self.assertEqual(count, 3)
+            with open(path, newline='', encoding='utf-8-sig') as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(rows[0]['NAME'], 'AP-1')
+            self.assertEqual(rows[2]['NAME'], '')
+
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'out.csv'
