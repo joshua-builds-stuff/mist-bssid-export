@@ -50,6 +50,39 @@ def paged(path: str, page: int, size: int = be.PAGE_SIZE) -> str:
 class TestPagination(unittest.TestCase):
     def test_follows_x_page_total(self):
         # Server caps at 2 per page even though 1000 was requested
+        headers = {'X-Page-Total': '5', 'X-Page-Limit': '2'}
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1, 2], headers),
+            paged('/x', 2): FakeResponse([3, 4], headers),
+            paged('/x', 3): FakeResponse([5], headers),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1, 2, 3, 4, 5])
+
+    def test_short_page_stops_without_total(self):
+        api = FakeApi({paged('/x?type=ap', 1): [1, 2]})
+        self.assertEqual(api.get_all_pages('/x?type=ap'), [1, 2])
+
+    def test_empty_page_stops(self):
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1], {'X-Page-Total': '3'}),
+            paged('/x', 2): FakeResponse([], {'X-Page-Total': '3'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1])
+
+    def test_non_list_body_raises(self):
+        api = FakeApi({paged('/x', 1): {'detail': 'nope'}})
+        with self.assertRaises(be.requests.exceptions.RequestException):
+            api.get_all_pages('/x')
+
+
+def paged(path: str, page: int, size: int = be.PAGE_SIZE) -> str:
+    sep = '&' if '?' in path else '?'
+    return f"{path}{sep}limit={size}&page={page}"
+
+
+class TestPagination(unittest.TestCase):
+    def test_follows_x_page_total(self):
+        # Server caps at 2 per page even though 1000 was requested
         api = FakeApi({
             paged('/x', 1): FakeResponse([1, 2], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
             paged('/x', 2): FakeResponse([3, 4], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
@@ -344,7 +377,7 @@ class TestFetchSitesAndGroups(unittest.TestCase):
             f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 'last'},
             ],
-            '/api/v1/sites/last/maps': [],
+            paged('/api/v1/sites/last/maps', 1): [],
             paged(
                 f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}', 1
             ): [],
@@ -414,8 +447,8 @@ class TestExport(unittest.TestCase):
                 {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's2'},
                 {'type': 'ap', 'mac': 'aabbcc000003', 'site_id': 's1'},  # no stats (offline)
             ],
-            '/api/v1/sites/s1/maps': [{'id': 'm1', 'name': 'Floor 1'}],
-            '/api/v1/sites/s2/maps': [],
+            paged('/api/v1/sites/s1/maps', 1): [{'id': 'm1', 'name': 'Floor 1'}],
+            paged('/api/v1/sites/s2/maps', 1): [],
             self.ORG_STATS_PATH: (self.S1_STATS + self.S2_STATS
                                   if org_stats is None else org_stats),
             paged('/api/v1/sites/s1/stats/devices?type=ap', 1): self.S1_STATS,
@@ -483,7 +516,7 @@ class TestExport(unittest.TestCase):
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
                 {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's1'},
             ],
-            '/api/v1/sites/s1/maps': [],
+            paged('/api/v1/sites/s1/maps', 1): [],
             # Server applies a 1-item page even though 1000 was requested
             paged(stats_path, 1): FakeResponse(
                 [{'mac': 'aabbcc000001', 'name': 'AP-1',
@@ -508,8 +541,8 @@ class TestExport(unittest.TestCase):
         real = api.get
 
         def get(path):
-            # Stats go through get_all_pages, which appends &limit=&page=.
-            if path == failing_path or path.startswith(failing_path + '&'):
+            # get_all_pages appends ?limit=&page= or &limit=&page=.
+            if path == failing_path or path.startswith((failing_path + '&', failing_path + '?')):
                 raise be.requests.exceptions.ReadTimeout('read timed out')
             return real(path)
         api.get = get
@@ -568,6 +601,20 @@ class TestExport(unittest.TestCase):
                 rows = list(csv.DictReader(f))
             self.assertEqual(rows[0]['NAME'], 'AP-1')
             self.assertEqual(rows[2]['NAME'], '')
+
+    def test_maps_past_first_page(self):
+        api = self._make_api()
+        total = {'X-Page-Total': str(be.PAGE_SIZE + 1)}
+        page1 = [{'id': f'filler{i}', 'name': f'F{i}'} for i in range(be.PAGE_SIZE)]
+        api.responses[paged('/api/v1/sites/s1/maps', 1)] = FakeResponse(page1, total)
+        api.responses[paged('/api/v1/sites/s1/maps', 2)] = FakeResponse(
+            [{'id': 'm1', 'name': 'Floor 1'}], total)
+        with tempfile.TemporaryDirectory() as tmp:
+            out = Path(tmp) / 'out.csv'
+            path, _ = be.export_bssids(api, 'o1', 'My Org', self.SITES, None, out)
+            with open(path, newline='', encoding='utf-8-sig') as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(rows[0]['MAP'], 'Floor 1')
 
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:
