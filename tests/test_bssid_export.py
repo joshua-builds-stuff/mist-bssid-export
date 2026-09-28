@@ -272,7 +272,7 @@ class TestFetchSitesAndGroups(unittest.TestCase):
         size = be.PAGE_SIZE
         page1 = [{'id': f's{i}', 'name': f'Store {i}', 'address': f'{i} Main St'}
                  for i in range(size)]
-        page2 = [{'id': 'last', 'name': 'Store 501', 'address': '501 Elm St'}]
+        page2 = [{'id': 'last', 'name': 'Store 9999', 'address': '9999 Elm St'}]
         hdr = {'X-Page-Total': str(size + 1)}
         api = FakeApi({
             paged('/api/v1/orgs/o1/sites', 1): FakeResponse(page1, hdr),
@@ -285,13 +285,13 @@ class TestFetchSitesAndGroups(unittest.TestCase):
         })
         sites = be.fetch_sites(api, 'o1')
         self.assertEqual(len(sites), size + 1)
-        self.assertEqual(be.resolve_scope(sites, [], 'Store 501', None), {'last'})
+        self.assertEqual(be.resolve_scope(sites, [], 'Store 9999', None), {'last'})
         with tempfile.TemporaryDirectory() as tmp:
             path, _ = be.export_bssids(api, 'o1', 'Org', sites, None, Path(tmp) / 'o.csv')
             with open(path, newline='', encoding='utf-8') as f:
                 row = next(csv.DictReader(f))
-        self.assertEqual(row['SITE'], 'Store 501')
-        self.assertEqual(row['SITE_ADDRESS'], '501 Elm St')
+        self.assertEqual(row['SITE'], 'Store 9999')
+        self.assertEqual(row['SITE_ADDRESS'], '9999 Elm St')
 
     def test_site_groups_paginated(self):
         hdr = {'X-Page-Total': '3', 'X-Page-Limit': '2'}
