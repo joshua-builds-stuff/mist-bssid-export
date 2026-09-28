@@ -429,6 +429,20 @@ SITE_COMMA_HINT = ('Quote site names that contain commas (HQ,"Dallas, TX"), '
                    'repeat --sites once per site, or use the site ID.')
 
 
+def _single_group(token: str, named: list[dict]) -> dict | None:
+    """Return the only group in named, or raise if the name is ambiguous.
+
+    Mist does not require unique group names, and API order is not stable,
+    so picking the first match could export a different group each run.
+    """
+    if len(named) > 1:
+        listing = '\n'.join(f"  {g.get('name', '?')}  {g.get('id', '?')}" for g in named)
+        raise ConfigError(
+            f"{len(named)} site groups are named '{token}' - pass the group "
+            f"ID instead:\n{listing}")
+    return named[0] if named else None
+
+
 def resolve_scope(
     sites: list[dict],
     site_groups: list[dict],
@@ -476,7 +490,7 @@ def resolve_scope(
         group = next((g for g in site_groups if g.get('id') == token), None)
         if group is None:
             named = [g for g in site_groups if g.get('name', '').lower() == token.lower()]
-            group = named[0] if named else None
+            group = _single_group(token, named)
         if group is None:
             names = ', '.join(sorted(g.get('name', '?') for g in site_groups)) or '(none)'
             raise ConfigError(
@@ -776,6 +790,7 @@ def match_group(token: str, ordered_groups: list[dict]) -> dict:
     token = token.strip()
     if not token:
         raise ConfigError("Nothing selected.")
+    by_id = next((g for g in ordered_groups if g.get('id') == token), None)
     matches = [g for g in ordered_groups
                if g.get('id') == token or g.get('name', '').lower() == token.lower()]
     if token.isdigit() and 1 <= int(token) <= len(ordered_groups):
@@ -785,8 +800,11 @@ def match_group(token: str, ordered_groups: list[dict]) -> dict:
                 f"'{token}' is both a list number and a group name - "
                 "use the group ID to disambiguate.")
         return indexed
-    if matches:
-        return matches[0]
+    if by_id is not None:
+        return by_id
+    group = _single_group(token, matches)
+    if group is not None:
+        return group
     raise ConfigError(f"No site group matches '{token}'.")
 
 
