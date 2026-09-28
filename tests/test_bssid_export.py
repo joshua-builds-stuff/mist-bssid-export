@@ -288,6 +288,44 @@ class TestResolveScope(unittest.TestCase):
             be.resolve_scope(self.SITES, self.GROUPS, None, '  ')
 
 
+class TestFetchSitesAndGroups(unittest.TestCase):
+    def test_site_past_first_page_gets_its_address(self):
+        size = be.PAGE_SIZE
+        page1 = [{'id': f's{i}', 'name': f'Store {i}', 'address': f'{i} Main St'}
+                 for i in range(size)]
+        page2 = [{'id': 'last', 'name': 'Store 9999', 'address': '9999 Elm St'}]
+        hdr = {'X-Page-Total': str(size + 1)}
+        api = FakeApi({
+            paged('/api/v1/orgs/o1/sites', 1): FakeResponse(page1, hdr),
+            paged('/api/v1/orgs/o1/sites', 2): FakeResponse(page2, hdr),
+            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+                {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 'last'},
+            ],
+            '/api/v1/sites/last/maps': [],
+            '/api/v1/sites/last/stats/devices?type=ap': [],
+        })
+        sites = be.fetch_sites(api, 'o1')
+        self.assertEqual(len(sites), size + 1)
+        self.assertEqual(be.resolve_scope(sites, [], 'Store 9999', None), {'last'})
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(api, 'o1', 'Org', sites, None, Path(tmp) / 'o.csv')
+            with open(path, newline='', encoding='utf-8') as f:
+                row = next(csv.DictReader(f))
+        self.assertEqual(row['SITE'], 'Store 9999')
+        self.assertEqual(row['SITE_ADDRESS'], '9999 Elm St')
+
+    def test_site_groups_paginated(self):
+        hdr = {'X-Page-Total': '3', 'X-Page-Limit': '2'}
+        api = FakeApi({
+            paged('/api/v1/orgs/o1/sitegroups', 1): FakeResponse(
+                [{'id': 'g1', 'name': 'A'}, {'id': 'g2', 'name': 'B'}], hdr),
+            paged('/api/v1/orgs/o1/sitegroups', 2): FakeResponse(
+                [{'id': 'g3', 'name': 'Campus', 'site_ids': ['s1']}], hdr),
+        })
+        groups = be.fetch_site_groups(api, 'o1')
+        self.assertEqual(be.resolve_scope([], groups, None, 'Campus'), {'s1'})
+
+
 class TestFetchInventoryAps(unittest.TestCase):
     def test_pagination_and_filtering(self):
         page1 = [{'type': 'ap', 'mac': f'aabbccdd{i:04x}', 'site_id': 's1'}
