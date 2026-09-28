@@ -12,18 +12,75 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bssid_export as be  # noqa: E402
 
 
-class FakeApi:
-    """Stands in for MistSession; serves canned JSON per path."""
+class FakeResponse:
+    def __init__(self, data, headers: dict | None = None):
+        self._data = data
+        self.headers = headers or {}
+
+    def json(self):
+        return self._data
+
+
+class FakeApi(be.MistSession):
+    """Stands in for MistSession; serves canned JSON per path.
+
+    A response value may be plain JSON or a FakeResponse (to set headers).
+    """
 
     def __init__(self, responses: dict):
         self.responses = responses
         self.base = 'https://api.mist.com'
+        self.calls: list[str] = []
 
-    def get_json_list(self, path: str) -> list:
+    def get(self, path: str):
+        self.calls.append(path)
         if path in self.responses:
-            data = self.responses[path]
-            return data if isinstance(data, list) else []
+            resp = self.responses[path]
+            if isinstance(resp, Exception):
+                raise resp
+            return resp if isinstance(resp, FakeResponse) else FakeResponse(resp)
         raise AssertionError(f"Unexpected API path: {path}")
+
+
+def paged(path: str, page: int, size: int = be.PAGE_SIZE) -> str:
+    sep = '&' if '?' in path else '?'
+    return f"{path}{sep}limit={size}&page={page}"
+
+
+class TestPagination(unittest.TestCase):
+    def test_follows_x_page_total(self):
+        # Server caps at 2 per page even though 1000 was requested
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1, 2], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+            paged('/x', 2): FakeResponse([3, 4], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+            paged('/x', 3): FakeResponse([5], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1, 2, 3, 4, 5])
+
+    def test_short_page_stops_without_total(self):
+        api = FakeApi({paged('/x?type=ap', 1): [1, 2]})
+        self.assertEqual(api.get_all_pages('/x?type=ap'), [1, 2])
+
+    def test_x_page_limit_used_without_total(self):
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1, 2], {'X-Page-Limit': '2'}),
+            paged('/x', 2): FakeResponse([3], {'X-Page-Limit': '2'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1, 2, 3])
+
+    def test_empty_page_stops(self):
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1], {'X-Page-Total': '3'}),
+            paged('/x', 2): FakeResponse([], {'X-Page-Total': '3'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1])
+
+    def test_non_list_body_raises(self):
+        api = FakeApi({paged('/x', 1): {'results': [1]}, '/y': {'results': []}})
+        with self.assertRaises(be.requests.exceptions.RequestException):
+            api.get_all_pages('/x')
+        with self.assertRaises(be.requests.exceptions.RequestException):
+            api.get_json_list('/y')
 
 
 class TestExtractRadioMacs(unittest.TestCase):
