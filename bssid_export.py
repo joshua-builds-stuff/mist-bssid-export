@@ -350,7 +350,8 @@ def fetch_site_groups(api: MistSession, org_id: str) -> list[dict]:
 def fetch_inventory_aps(api: MistSession, org_id: str) -> dict[str, dict]:
     """Fetch the org AP inventory (paginated, filtered server-side) and return assigned APs.
 
-    Returns {normalized_mac: {'site_id': ..., 'raw_mac': ...}} for APs
+    Returns {normalized_mac: {'site_id': ..., 'raw_mac': ..., 'name': ...}}
+    for APs
     that are assigned to a site. Unassigned APs have no stats or BSSIDs.
     """
     all_devices = []
@@ -374,13 +375,22 @@ def fetch_inventory_aps(api: MistSession, org_id: str) -> dict[str, dict]:
         mac = d.get('mac', '')
         if not site_id or not mac:
             continue
-        assigned_aps[normalize_mac(mac)] = {'site_id': site_id, 'raw_mac': mac}
+        assigned_aps[normalize_mac(mac)] = {
+            'site_id': site_id,
+            'raw_mac': mac,
+            'name': _first_str(d.get('name'), d.get('hostname')),
+        }
     return assigned_aps
 
 
 # --------------------------------------------------------------------------
 # Data shaping
 # --------------------------------------------------------------------------
+
+def _first_str(*values) -> str:
+    """First value that is a non-empty string (API fields may be null)."""
+    return next((v for v in values if isinstance(v, str) and v), '')
+
 
 def normalize_mac(mac: str) -> str:
     return mac.replace(':', '').replace('-', '').lower()
@@ -624,7 +634,7 @@ def export_bssids(
         site_info = site_lookup.get(info['site_id'], {'name': 'Unknown', 'address': ''})
         stats = stats_lookup.get(norm_mac, {})
         csv_rows.append({
-            'NAME': stats.get('name', ''),
+            'NAME': _first_str(stats.get('name'), info['name']),
             'MAP': stats.get('map_name', ''),
             'AP_MAC': info['raw_mac'],
             'SITE': site_info['name'],
