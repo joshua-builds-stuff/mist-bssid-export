@@ -135,6 +135,10 @@ output file.
 Exit codes: `0` success, `1` configuration error, `2` API error (or invalid
 command-line arguments), `3` file error, `130` cancelled.
 
+If any API call fails after retries — including a single site's device
+stats or maps — the export stops with a non-zero exit code and no CSV is
+written; an existing file at the output path is left untouched.
+
 ## CSV columns
 
 | Column | Contents |
@@ -160,8 +164,8 @@ command-line arguments), `3` file error, `130` cancelled.
   to your E911 platform after any hardware change, and consider a
   scheduled re-run as a safety net.
 - **Export with APs online.** Radio MACs come from live AP stats; offline
-  APs export with an empty `RADIO_MACS` column, so generate the E911
-  upload while APs are connected.
+  APs export with an empty `RADIO_MACS` column (the run prints how many),
+  so generate the E911 upload while APs are connected.
 - **Verify site addresses in Mist first.** `SITE_ADDRESS` comes straight
   from the Mist site configuration — the dispatchable location is only as
   accurate as the address entered there, and floor granularity depends on

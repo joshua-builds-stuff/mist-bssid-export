@@ -302,7 +302,7 @@ class TestFetchSitesAndGroups(unittest.TestCase):
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 'last'},
             ],
             '/api/v1/sites/last/maps': [],
-            '/api/v1/sites/last/stats/devices?type=ap': [],
+            paged('/api/v1/sites/last/stats/devices?type=ap', 1): [],
         })
         sites = be.fetch_sites(api, 'o1')
         self.assertEqual(len(sites), size + 1)
@@ -419,6 +419,41 @@ class TestExport(unittest.TestCase):
                 rows = list(csv.DictReader(f))
         self.assertEqual([r['RADIO_MACS'] for r in rows], ['r1', 'r2'])
         self.assertEqual(rows[1]['NAME'], 'AP-2')
+
+    def _failing_api(self, failing_path):
+        api = self._make_api()
+        real = api.get
+
+        def get(path):
+            # Stats go through get_all_pages, which appends &limit=&page=.
+            if path == failing_path or path.startswith(failing_path + '&'):
+                raise be.requests.exceptions.ReadTimeout('read timed out')
+            return real(path)
+        api.get = get
+        return api
+
+    def test_stats_failure_aborts_and_keeps_previous_csv(self):
+        for failing in ('/api/v1/sites/s2/stats/devices?type=ap', '/api/v1/sites/s1/maps'):
+            with self.subTest(failing=failing), tempfile.TemporaryDirectory() as tmp:
+                out = Path(tmp) / 'out.csv'
+                out.write_text('previous good export\n', encoding='utf-8')
+                with self.assertRaises(be.requests.exceptions.RequestException):
+                    be.export_bssids(self._failing_api(failing), 'o1', 'My Org',
+                                     self.SITES, None, out)
+                self.assertEqual(out.read_text(encoding='utf-8'), 'previous good export\n')
+                self.assertEqual(sorted(p.name for p in Path(tmp).iterdir()), ['out.csv'])
+
+    def test_stats_failure_exits_nonzero(self):
+        api = self._failing_api('/api/v1/sites/s1/stats/devices?type=ap')
+        with tempfile.TemporaryDirectory() as tmp, \
+             patch.object(be, 'load_config', return_value={
+                 'api_url': 'https://api.mist.com', 'api_token': 't', 'org_id': 'o1'}), \
+             patch.object(be, 'MistSession', return_value=api), \
+             patch.object(be, 'validate_credentials', return_value='My Org'), \
+             patch.object(be, 'fetch_sites', return_value=self.SITES):
+            rc = be.main(['--all', '-o', str(Path(tmp) / 'out.csv')])
+            self.assertEqual(rc, 2)
+            self.assertFalse((Path(tmp) / 'out.csv').exists())
 
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:

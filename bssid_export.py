@@ -511,20 +511,22 @@ def export_bssids(
         print(f"  Site {idx}/{len(site_ids)}: {site_name} "
               f"({len(aps_by_site[site_id])} AP(s))...")
 
-        maps = {}
+        # A failed fetch must abort the export: blank columns would be
+        # indistinguishable from an offline AP in the E911 upload.
         try:
             map_data = api.get_json_list(f"/api/v1/sites/{site_id}/maps")
-            maps = {m['id']: m.get('name', '') for m in map_data if 'id' in m}
-        except Exception as e:
-            print(f"    Warning: could not fetch maps: {e}", file=sys.stderr)
+        except Exception:
+            print(f"    Could not fetch maps for site {site_name}", file=sys.stderr)
+            raise
+        maps = {m['id']: m.get('name', '') for m in map_data if 'id' in m}
 
-        device_stats = []
         try:
             device_stats = api.get_all_pages(
                 f"/api/v1/sites/{site_id}/stats/devices?type=ap"
             )
-        except Exception as e:
-            print(f"    Warning: could not fetch device stats: {e}", file=sys.stderr)
+        except Exception:
+            print(f"    Could not fetch device stats for site {site_name}", file=sys.stderr)
+            raise
 
         for stat in device_stats:
             norm = normalize_mac(stat.get('mac', ''))
@@ -537,6 +539,11 @@ def export_bssids(
                 'lldp_system_name': (stat.get('lldp_stat') or {}).get('system_name', ''),
                 'lldp_port_id': (stat.get('lldp_stat') or {}).get('port_id', ''),
             }
+
+    no_stats = len(assigned_aps) - len(stats_lookup)
+    if no_stats:
+        print(f"{no_stats} AP(s) absent from device stats (offline or not yet "
+              "connected) - exported with empty RADIO_MACS")
 
     # Build CSV rows
     csv_rows = []
@@ -567,10 +574,17 @@ def export_bssids(
         output_path = output
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    with open(output_path, 'w', newline='', encoding='utf-8') as f:
-        writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
-        writer.writeheader()
-        writer.writerows(csv_rows)
+    # Write to a temp file and swap it in, so an existing export is never
+    # replaced by a partial one.
+    tmp_path = output_path.with_name(f".{output_path.name}.tmp")
+    try:
+        with open(tmp_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
+            writer.writeheader()
+            writer.writerows(csv_rows)
+        os.replace(tmp_path, output_path)
+    finally:
+        tmp_path.unlink(missing_ok=True)
 
     return output_path, len(csv_rows)
 
