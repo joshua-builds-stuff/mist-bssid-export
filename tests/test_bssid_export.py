@@ -12,18 +12,75 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import bssid_export as be  # noqa: E402
 
 
-class FakeApi:
-    """Stands in for MistSession; serves canned JSON per path."""
+class FakeResponse:
+    def __init__(self, data, headers: dict | None = None):
+        self._data = data
+        self.headers = headers or {}
+
+    def json(self):
+        return self._data
+
+
+class FakeApi(be.MistSession):
+    """Stands in for MistSession; serves canned JSON per path.
+
+    A response value may be plain JSON or a FakeResponse (to set headers).
+    """
 
     def __init__(self, responses: dict):
         self.responses = responses
         self.base = 'https://api.mist.com'
+        self.calls: list[str] = []
 
-    def get_json_list(self, path: str) -> list:
+    def get(self, path: str):
+        self.calls.append(path)
         if path in self.responses:
-            data = self.responses[path]
-            return data if isinstance(data, list) else []
+            resp = self.responses[path]
+            if isinstance(resp, Exception):
+                raise resp
+            return resp if isinstance(resp, FakeResponse) else FakeResponse(resp)
         raise AssertionError(f"Unexpected API path: {path}")
+
+
+def paged(path: str, page: int, size: int = be.PAGE_SIZE) -> str:
+    sep = '&' if '?' in path else '?'
+    return f"{path}{sep}limit={size}&page={page}"
+
+
+class TestPagination(unittest.TestCase):
+    def test_follows_x_page_total(self):
+        # Server caps at 2 per page even though 1000 was requested
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1, 2], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+            paged('/x', 2): FakeResponse([3, 4], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+            paged('/x', 3): FakeResponse([5], {'X-Page-Total': '5', 'X-Page-Limit': '2'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1, 2, 3, 4, 5])
+
+    def test_short_page_stops_without_total(self):
+        api = FakeApi({paged('/x?type=ap', 1): [1, 2]})
+        self.assertEqual(api.get_all_pages('/x?type=ap'), [1, 2])
+
+    def test_x_page_limit_used_without_total(self):
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1, 2], {'X-Page-Limit': '2'}),
+            paged('/x', 2): FakeResponse([3], {'X-Page-Limit': '2'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1, 2, 3])
+
+    def test_empty_page_stops(self):
+        api = FakeApi({
+            paged('/x', 1): FakeResponse([1], {'X-Page-Total': '3'}),
+            paged('/x', 2): FakeResponse([], {'X-Page-Total': '3'}),
+        })
+        self.assertEqual(api.get_all_pages('/x'), [1])
+
+    def test_non_list_body_raises(self):
+        api = FakeApi({paged('/x', 1): {'results': [1]}, '/y': {'results': []}})
+        with self.assertRaises(be.requests.exceptions.RequestException):
+            api.get_all_pages('/x')
+        with self.assertRaises(be.requests.exceptions.RequestException):
+            api.get_json_list('/y')
 
 
 class TestExtractRadioMacs(unittest.TestCase):
@@ -262,13 +319,13 @@ class TestExport(unittest.TestCase):
             ],
             '/api/v1/sites/s1/maps': [{'id': 'm1', 'name': 'Floor 1'}],
             '/api/v1/sites/s2/maps': [],
-            '/api/v1/sites/s1/stats/devices?type=ap': [
+            paged('/api/v1/sites/s1/stats/devices?type=ap', 1): [
                 {'mac': 'aabbcc000001', 'name': 'AP-1', 'map_id': 'm1',
                  'radio_stat': {'band_24': {'mac': 'radio24'}, 'band_5': {'mac': 'radio5'}},
                  'lldp_stat': {'system_name': 'sw1', 'port_id': 'ge-0/0/1'}},
                 {'mac': 'ddeeff000009', 'name': 'not-in-inventory'},
             ],
-            '/api/v1/sites/s2/stats/devices?type=ap': [
+            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): [
                 {'mac': 'AA:BB:CC:00:00:02', 'name': 'AP-2', 'radio_stat': None,
                  'lldp_stat': None},
             ],
@@ -298,6 +355,32 @@ class TestExport(unittest.TestCase):
             self.assertEqual(rows[1]['NAME'], 'AP-2')
             self.assertEqual(rows[1]['RADIO_MACS'], '')
             self.assertEqual(rows[2]['NAME'], '')  # offline AP: inventory only
+
+    def test_device_stats_second_page_lands_in_csv(self):
+        stats_path = '/api/v1/sites/s1/stats/devices?type=ap'
+        api = FakeApi({
+            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+                {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
+                {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's1'},
+            ],
+            '/api/v1/sites/s1/maps': [],
+            # Server applies a 1-item page even though 1000 was requested
+            paged(stats_path, 1): FakeResponse(
+                [{'mac': 'aabbcc000001', 'name': 'AP-1',
+                  'radio_stat': {'band_5': {'mac': 'r1'}}}],
+                {'X-Page-Total': '2', 'X-Page-Limit': '1'}),
+            paged(stats_path, 2): FakeResponse(
+                [{'mac': 'aabbcc000002', 'name': 'AP-2',
+                  'radio_stat': {'band_5': {'mac': 'r2'}}}],
+                {'X-Page-Total': '2', 'X-Page-Limit': '1'}),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(
+                api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'out.csv')
+            with open(path, newline='', encoding='utf-8') as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual([r['RADIO_MACS'] for r in rows], ['r1', 'r2'])
+        self.assertEqual(rows[1]['NAME'], 'AP-2')
 
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:
