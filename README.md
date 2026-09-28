@@ -120,6 +120,12 @@ python bssid_export.py -o out.csv             # write CSV to a specific file
 python bssid_export.py --env C:\path\to\.env  # use a specific .env file
 ```
 
+Site names containing commas: an argument that is exactly one site's name
+(`--sites "Dallas, TX"`) is taken as that site. To combine it with others,
+wrap it in double quotes inside the list (`--sites 'HQ,"Dallas, TX"'`),
+repeat `--sites` once per site, or pass the site ID. The interactive site
+prompt follows the same rules.
+
 With no arguments the tool opens a menu (export entire org / selected
 sites / a site group, list sites/groups, reconfigure credentials). If no
 valid configuration exists yet, it walks you through org ID, API token,

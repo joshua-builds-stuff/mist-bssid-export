@@ -261,6 +261,31 @@ class TestResolveScope(unittest.TestCase):
         with self.assertRaises(be.ConfigError):
             be.resolve_scope(self.SITES, [], 'Nope', None)
 
+    COMMA_SITES = SITES + [
+        {'id': 'id-dal', 'name': 'Dallas, TX'},
+        {'id': 'id-dal2', 'name': 'Dallas'},
+    ]
+
+    def test_site_name_with_comma_as_one_unit(self):
+        self.assertEqual(be.resolve_scope(self.COMMA_SITES, [], 'Dallas, TX', None),
+                         {'id-dal'})
+
+    def test_quoted_comma_name_with_others(self):
+        result = be.resolve_scope(self.COMMA_SITES, [], 'HQ,"Dallas, TX"', None)
+        self.assertEqual(result, {'id-hq', 'id-dal'})
+
+    def test_repeated_sites_flag(self):
+        args = be.build_parser().parse_args(['--sites', 'Dallas, TX', '--sites', 'HQ,Branch 7'])
+        self.assertEqual(be.resolve_scope(self.COMMA_SITES, [], args.sites, None),
+                         {'id-dal', 'id-hq', 'id-b7'})
+
+    def test_unknown_comma_fragment_error_is_quoted(self):
+        with self.assertRaises(be.ConfigError) as ctx:
+            be.resolve_scope(self.SITES, [], 'Dallas, TX', None)
+        msg = str(ctx.exception)
+        self.assertIn('"Dallas", "TX"', msg)
+        self.assertIn('site ID', msg)
+
     def test_group_by_name(self):
         result = be.resolve_scope(self.SITES, self.GROUPS, None, 'campus')
         self.assertEqual(result, {'id-hq', 'id-b7'})
@@ -483,6 +508,12 @@ class TestInteractiveHelpers(unittest.TestCase):
     def test_parse_site_selection_out_of_range_number_is_name(self):
         with self.assertRaises(be.ConfigError):
             be.parse_site_selection('99', self.SITES)
+
+    def test_parse_site_selection_comma_in_name(self):
+        sites = self.SITES + [{'id': 'id-d', 'name': 'Dallas, TX'}]
+        self.assertEqual(be.parse_site_selection('dallas, tx', sites), {'id-d'})
+        self.assertEqual(be.parse_site_selection('1, "Dallas, TX"', sites),
+                         {'id-a', 'id-d'})
 
     def test_parse_site_selection_empty(self):
         with self.assertRaises(be.ConfigError):
