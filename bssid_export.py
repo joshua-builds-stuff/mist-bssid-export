@@ -485,12 +485,12 @@ def resolve_scope(
         wanted = [t for arg in site_args for t in split_site_selection(arg, sites)]
         if not wanted:
             raise ConfigError("--sites was given but contains no site names or IDs.")
-        by_id = {s.get('id'): s for s in sites if s.get('id')}
+        by_id = {s['id'].lower(): s['id'] for s in sites if s.get('id')}
         target = set()
         unknown = []
         for token in wanted:
-            if token in by_id:
-                target.add(token)
+            if token.lower() in by_id:
+                target.add(by_id[token.lower()])
                 continue
             matches = [s['id'] for s in sites
                        if s.get('id') and s.get('name', '').lower() == token.lower()]
@@ -510,7 +510,8 @@ def resolve_scope(
         token = group_arg.strip()
         if not token:
             raise ConfigError("--site-group was given but is empty.")
-        group = next((g for g in site_groups if g.get('id') == token), None)
+        group = next((g for g in site_groups
+                      if (g.get('id') or '').lower() == token.lower()), None)
         if group is None:
             named = [g for g in site_groups if g.get('name', '').lower() == token.lower()]
             group = _single_group(token, named)
@@ -814,7 +815,8 @@ def parse_site_selection(raw: str, ordered_sites: list[dict]) -> set[str]:
     target = set()
     for token in tokens:
         matches = {s['id'] for s in ordered_sites
-                   if s.get('id') == token or s.get('name', '').lower() == token.lower()}
+                   if s.get('id', '').lower() == token.lower()
+                   or s.get('name', '').lower() == token.lower()}
         if token.isdigit() and 1 <= int(token) <= len(ordered_sites):
             indexed = ordered_sites[int(token) - 1]['id']
             if matches and matches != {indexed}:
@@ -837,7 +839,8 @@ def match_group(token: str, ordered_groups: list[dict]) -> dict:
         raise ConfigError("Nothing selected.")
     by_id = next((g for g in ordered_groups if g.get('id') == token), None)
     matches = [g for g in ordered_groups
-               if g.get('id') == token or g.get('name', '').lower() == token.lower()]
+               if (g.get('id') or '').lower() == token.lower()
+               or g.get('name', '').lower() == token.lower()]
     if token.isdigit() and 1 <= int(token) <= len(ordered_groups):
         indexed = ordered_groups[int(token) - 1]
         if matches and matches != [indexed]:
