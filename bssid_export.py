@@ -219,7 +219,7 @@ class MistSession:
 
     def __init__(self, api_url: str, api_token: str):
         validate_api_url(api_url)
-        self.base = api_url.rstrip('/')
+        self.base = f"https://{urlparse(api_url).hostname}"
         self.session = requests.Session()
         self.session.headers.update({
             'Authorization': f'Token {api_token}',

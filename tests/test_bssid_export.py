@@ -104,6 +104,12 @@ class TestResolveApiUrl(unittest.TestCase):
                 be.resolve_api_url()
 
 
+class TestMistSession(unittest.TestCase):
+    def test_base_uses_only_allowlisted_hostname(self):
+        session = be.MistSession('https://evil.example\\@api.mist.com', 'dummy-token')
+        self.assertEqual(session.base, 'https://api.mist.com')
+
+
 class TestLoadEnv(unittest.TestCase):
     def test_parse_and_no_override(self):
         with tempfile.TemporaryDirectory() as tmp:
