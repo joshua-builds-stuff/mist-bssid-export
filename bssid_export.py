@@ -579,7 +579,7 @@ def export_bssids(
         # A failed fetch must abort the export: blank columns would be
         # indistinguishable from an offline AP in the E911 upload.
         try:
-            map_data = api.get_json_list(f"/api/v1/sites/{site_id}/maps")
+            map_data = api.get_all_pages(f"/api/v1/sites/{site_id}/maps")
         except Exception:
             print(f"    Could not fetch maps for site {site_name}", file=sys.stderr)
             raise
