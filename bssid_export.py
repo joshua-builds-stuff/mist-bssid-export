@@ -82,6 +82,7 @@ CLOUD_ENDPOINTS = {
 
 # Allowlisted API hostnames (SSRF prevention)
 ALLOWED_HOSTS = frozenset(urlparse(u).hostname for u in CLOUD_ENDPOINTS.values())
+ENV_KEYS = frozenset({'MIST_API_TOKEN', 'MIST_ORG_ID', 'MIST_API_URL', 'MIST_CLOUD'})
 
 CSV_FIELDS = [
     'NAME', 'MAP', 'AP_MAC', 'SITE', 'SITE_ADDRESS',
@@ -126,7 +127,7 @@ def load_env(env_path: Path) -> bool:
             value = value[1:-1]
         else:
             value = re.sub(r'\s+#.*$', '', value).strip()
-        if key:
+        if key in ENV_KEYS:
             os.environ.setdefault(key, value)
     return True
 
@@ -221,6 +222,7 @@ class MistSession:
         validate_api_url(api_url)
         self.base = f"https://{urlparse(api_url).hostname}"
         self.session = requests.Session()
+        self.session.trust_env = False
         self.session.headers.update({
             'Authorization': f'Token {api_token}',
             'Content-Type': 'application/json',
