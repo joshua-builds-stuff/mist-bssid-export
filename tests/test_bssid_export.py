@@ -405,7 +405,7 @@ class TestExport(unittest.TestCase):
             path, count = be.export_bssids(
                 self._make_api(), 'o1', 'My Org', self.SITES, None, out)
             self.assertEqual(count, 3)
-            with open(path, newline='', encoding='utf-8') as f:
+            with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual([r['AP_MAC'] for r in rows],
                              ['aabbcc000001', 'aabbcc000002', 'aabbcc000003'])
@@ -440,7 +440,7 @@ class TestExport(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             path, _ = be.export_bssids(
                 api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'out.csv')
-            with open(path, newline='', encoding='utf-8') as f:
+            with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
         self.assertEqual([r['RADIO_MACS'] for r in rows], ['r1', 'r2'])
         self.assertEqual(rows[1]['NAME'], 'AP-2')
@@ -480,13 +480,27 @@ class TestExport(unittest.TestCase):
             self.assertEqual(rc, 2)
             self.assertFalse((Path(tmp) / 'out.csv').exists())
 
+    def test_csv_has_utf8_bom_for_excel(self):
+        sites = [{'id': 's1', 'name': 'São Paulo', 'address': '1 Avenida Café'},
+                 {'id': 's2', 'name': 'Branch', 'address': ''}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(
+                self._make_api(), 'o1', 'My Org', sites, None, Path(tmp) / 'out.csv')
+            raw = path.read_bytes()
+            self.assertTrue(raw.startswith(b'\xef\xbb\xbfNAME,'))
+            self.assertIn('Avenida Café'.encode('utf-8'), raw)
+            with open(path, newline='', encoding='utf-8-sig') as f:
+                rows = list(csv.DictReader(f))
+            self.assertEqual(rows[0]['SITE'], 'São Paulo')
+            self.assertEqual(rows[0]['SITE_ADDRESS'], '1 Avenida Café')
+
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'out.csv'
             path, count = be.export_bssids(
                 self._make_api(), 'o1', 'My Org', self.SITES, {'s2'}, out)
             self.assertEqual(count, 1)
-            with open(path, newline='', encoding='utf-8') as f:
+            with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual(rows[0]['SITE'], 'Branch')
 

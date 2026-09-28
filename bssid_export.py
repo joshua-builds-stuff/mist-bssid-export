@@ -603,10 +603,11 @@ def export_bssids(
         output_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Write to a temp file and swap it in, so an existing export is never
-    # replaced by a partial one.
+    # replaced by a partial one. utf-8-sig: Excel only reads a CSV as UTF-8
+    # when it starts with a BOM.
     tmp_path = output_path.with_name(f".{output_path.name}.tmp")
     try:
-        with open(tmp_path, 'w', newline='', encoding='utf-8') as f:
+        with open(tmp_path, 'w', newline='', encoding='utf-8-sig') as f:
             writer = csv.DictWriter(f, fieldnames=CSV_FIELDS)
             writer.writeheader()
             writer.writerows(csv_rows)
