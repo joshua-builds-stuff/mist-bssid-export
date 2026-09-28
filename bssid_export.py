@@ -129,8 +129,9 @@ def load_env(env_path: Path) -> bool:
         key, value = line.split('=', 1)
         key = key.strip()
         value = value.strip()
-        if len(value) >= 2 and value[0] in ('"', "'") and value.endswith(value[0]):
-            value = value[1:-1]
+        quoted = re.fullmatch(r'(["\'])(.*?)\1(?:\s+#.*)?', value)
+        if quoted:
+            value = quoted.group(2)
         else:
             value = re.sub(r'\s+#.*$', '', value).strip()
         if key in ENV_KEYS:
