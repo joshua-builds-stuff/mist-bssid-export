@@ -406,19 +406,46 @@ def sanitize_filename(name: str) -> str:
     return name.strip('_')
 
 
+def split_site_selection(raw: str, sites: list[dict]) -> list[str]:
+    """Split a comma-separated site selection into tokens.
+
+    A value that is exactly one site's name or ID (e.g. 'Dallas, TX') is
+    kept whole. Otherwise it is split on commas, honoring double quotes so
+    names containing commas can be combined: HQ,"Dallas, TX".
+    """
+    value = raw.strip()
+    if value and any(value == s.get('id') or value.lower() == s.get('name', '').lower()
+                     for s in sites):
+        return [value]
+    row = next(csv.reader([value], skipinitialspace=True), [])
+    return [t.strip() for t in row if t.strip()]
+
+
+def _quote_list(names) -> str:
+    return ', '.join(f'"{n}"' for n in names)
+
+
+SITE_COMMA_HINT = ('Quote site names that contain commas (HQ,"Dallas, TX"), '
+                   'repeat --sites once per site, or use the site ID.')
+
+
 def resolve_scope(
     sites: list[dict],
     site_groups: list[dict],
-    site_args: str | None,
+    site_args: str | list[str] | None,
     group_arg: str | None,
 ) -> set[str] | None:
     """Resolve --sites/--site-group arguments to a set of site IDs.
 
     Returns None for "entire org". Entries match site/group names
-    (case-insensitive) or IDs. Raises ConfigError for unknown entries.
+    (case-insensitive) or IDs. site_args may be one string or a list (one
+    per --sites flag); see split_site_selection for comma handling. Raises
+    ConfigError for unknown entries.
     """
     if site_args is not None:
-        wanted = [t.strip() for t in site_args.split(',') if t.strip()]
+        if isinstance(site_args, str):
+            site_args = [site_args]
+        wanted = [t for arg in site_args for t in split_site_selection(arg, sites)]
         if not wanted:
             raise ConfigError("--sites was given but contains no site names or IDs.")
         by_id = {s.get('id'): s for s in sites if s.get('id')}
@@ -435,9 +462,10 @@ def resolve_scope(
             else:
                 unknown.append(token)
         if unknown:
-            names = ', '.join(sorted(s.get('name', '?') for s in sites)) or '(none)'
+            names = _quote_list(sorted(s.get('name', '?') for s in sites)) or '(none)'
             raise ConfigError(
-                f"Unknown site(s): {', '.join(unknown)}\nAvailable sites: {names}"
+                f"Unknown site(s): {_quote_list(unknown)}\n"
+                f"Available sites: {names}\n{SITE_COMMA_HINT}"
             )
         return target
 
@@ -717,9 +745,10 @@ def interactive_setup(env_path: Path) -> dict:
 def parse_site_selection(raw: str, ordered_sites: list[dict]) -> set[str]:
     """Map 'numbers, names, or IDs' user input to a set of site IDs.
 
-    Numbers are 1-based indexes into ordered_sites as displayed.
+    Numbers are 1-based indexes into ordered_sites as displayed. Commas
+    are handled as in split_site_selection.
     """
-    tokens = [t.strip() for t in raw.split(',') if t.strip()]
+    tokens = split_site_selection(raw, ordered_sites)
     if not tokens:
         raise ConfigError("Nothing selected.")
     target = set()
@@ -735,7 +764,8 @@ def parse_site_selection(raw: str, ordered_sites: list[dict]) -> set[str]:
             target.add(indexed)
             continue
         if not matches:
-            raise ConfigError(f"No site matches '{token}'.")
+            raise ConfigError(f'No site matches "{token}". '
+                              'Quote names that contain commas: HQ,"Dallas, TX".')
         target.update(matches)
     return target
 
@@ -840,7 +870,8 @@ def run_interactive(env_arg: Path | None) -> int:
                     continue
                 for i, s in enumerate(sites, 1):
                     print(f"  {i:>3}. {s.get('name', '')}")
-                raw = input("Sites to export (numbers, names, or IDs, comma-separated): ")
+                raw = input("Sites to export (numbers, names, or IDs, comma-separated; "
+                            "quote names containing commas): ")
                 target = parse_site_selection(raw, sites)
                 _menu_export(api, org_id, org_name, sites, target)
             elif choice == '3':
@@ -900,8 +931,9 @@ def build_parser() -> argparse.ArgumentParser:
         '-a', '--all', action='store_true',
         help='export the entire org (non-interactive)')
     scope.add_argument(
-        '--sites', metavar='NAME_OR_ID[,..]',
-        help='limit export to these sites (comma-separated names or IDs)')
+        '--sites', metavar='NAME_OR_ID[,..]', action='append',
+        help='limit export to these sites (comma-separated names or IDs; '
+             'repeatable; quote names containing commas: HQ,"Dallas, TX")')
     scope.add_argument(
         '--site-group', metavar='NAME_OR_ID',
         help='limit export to sites in this site group')
