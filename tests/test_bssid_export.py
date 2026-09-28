@@ -559,6 +559,26 @@ class TestInteractiveHelpers(unittest.TestCase):
         self.assertEqual(be.match_group('campus', self.GROUPS)['id'], 'g-1')
         self.assertEqual(be.match_group('g-2', self.GROUPS)['id'], 'g-2')
 
+    DUP_GROUPS = [
+        {'id': 'g-1', 'name': 'Campus', 'site_ids': ['id-a']},
+        {'id': 'g-9', 'name': 'campus', 'site_ids': ['id-b', 'id-c']},
+    ]
+
+    def test_duplicate_group_name_is_ambiguous(self):
+        with self.assertRaises(be.ConfigError) as ctx:
+            be.match_group('Campus', self.DUP_GROUPS)
+        self.assertIn('g-1', str(ctx.exception))
+        self.assertIn('g-9', str(ctx.exception))
+        with self.assertRaises(be.ConfigError) as ctx:
+            be.resolve_scope(self.SITES, self.DUP_GROUPS, None, 'Campus')
+        self.assertIn('group ID', str(ctx.exception))
+
+    def test_duplicate_group_name_resolved_by_id_or_number(self):
+        self.assertEqual(be.match_group('g-9', self.DUP_GROUPS)['id'], 'g-9')
+        self.assertEqual(be.match_group('1', self.DUP_GROUPS)['id'], 'g-1')
+        self.assertEqual(be.resolve_scope(self.SITES, self.DUP_GROUPS, None, 'g-9'),
+                         {'id-b', 'id-c'})
+
     def test_match_group_unknown(self):
         with self.assertRaises(be.ConfigError):
             be.match_group('nope', self.GROUPS)
