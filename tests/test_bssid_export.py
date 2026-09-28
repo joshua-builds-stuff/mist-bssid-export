@@ -323,7 +323,7 @@ class TestFetchSitesAndGroups(unittest.TestCase):
         api = FakeApi({
             paged('/api/v1/orgs/o1/sites', 1): FakeResponse(page1, hdr),
             paged('/api/v1/orgs/o1/sites', 2): FakeResponse(page2, hdr),
-            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 'last'},
             ],
             '/api/v1/sites/last/maps': [],
@@ -357,13 +357,13 @@ class TestFetchInventoryAps(unittest.TestCase):
                  for i in range(be.INVENTORY_PAGE_SIZE)]
         page2 = [
             {'type': 'ap', 'mac': 'AA:BB:CC:00:00:01', 'site_id': 's2'},
-            {'type': 'switch', 'mac': 'ffffffffffff', 'site_id': 's1'},   # not an AP
+            {'type': 'switch', 'mac': 'ffffffffffff', 'site_id': 's1'},   # ignored even if server returns it
             {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': None},       # unassigned
             {'type': 'ap', 'mac': '', 'site_id': 's1'},                   # no mac
         ]
         api = FakeApi({
-            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': page1,
-            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=2': page2,
+            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': page1,
+            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=2': page2,
         })
         aps = be.fetch_inventory_aps(api, 'o1')
         self.assertEqual(len(aps), be.INVENTORY_PAGE_SIZE + 1)
@@ -375,7 +375,7 @@ class TestFetchInventoryAps(unittest.TestCase):
 class TestExport(unittest.TestCase):
     def _make_api(self):
         return FakeApi({
-            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
                 {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's2'},
                 {'type': 'ap', 'mac': 'aabbcc000003', 'site_id': 's1'},  # no stats (offline)
@@ -422,7 +422,7 @@ class TestExport(unittest.TestCase):
     def test_device_stats_second_page_lands_in_csv(self):
         stats_path = '/api/v1/sites/s1/stats/devices?type=ap'
         api = FakeApi({
-            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
                 {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's1'},
             ],
