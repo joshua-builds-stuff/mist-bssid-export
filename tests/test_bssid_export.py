@@ -334,6 +334,27 @@ class TestExport(unittest.TestCase):
             self.assertTrue(path.name.endswith('.csv'))
 
 
+    def test_output_tilde_is_expanded(self):
+        with tempfile.TemporaryDirectory() as home, \
+                tempfile.TemporaryDirectory() as cwd:
+            prev = os.getcwd()
+            os.chdir(cwd)
+            try:
+                with patch.dict(os.environ, {'HOME': home, 'USERPROFILE': home}):
+                    path, _ = be.export_bssids(
+                        self._make_api(), 'o1', 'My Org', self.SITES, None,
+                        Path('~/exports'))
+                    file_path, _ = be.export_bssids(
+                        self._make_api(), 'o1', 'My Org', self.SITES, None,
+                        Path('~/out/file.csv'))
+            finally:
+                os.chdir(prev)
+            self.assertEqual(path.parent, Path(home) / 'exports')
+            self.assertEqual(file_path, Path(home) / 'out' / 'file.csv')
+            self.assertTrue(file_path.is_file())
+            self.assertFalse((Path(cwd) / '~').exists())
+
+
 class TestInteractiveHelpers(unittest.TestCase):
     SITES = [
         {'id': 'id-a', 'name': 'Alpha'},

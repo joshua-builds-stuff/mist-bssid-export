@@ -518,6 +518,10 @@ def export_bssids(
     # needed) so `-o C:\exports` never silently writes a file named 'exports'.
     timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
     default_name = f"{sanitize_filename(org_name) or 'org'}.bssid-export-{timestamp}.csv"
+    if output is not None:
+        # Interactive input and quoted -o values never pass through a shell,
+        # so '~' would otherwise become a literal directory name.
+        output = output.expanduser()
     if output is None:
         output_path = Path.cwd() / default_name
     elif output.is_dir() or output.suffix == '':
