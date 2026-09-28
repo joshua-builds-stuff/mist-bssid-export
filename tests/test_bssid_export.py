@@ -445,14 +445,23 @@ class TestExport(unittest.TestCase):
             f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': [
                 {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
                 {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's2'},
-                {'type': 'ap', 'mac': 'aabbcc000003', 'site_id': 's1'},  # no stats (offline)
+                {'type': 'ap', 'mac': 'aabbcc000003', 'site_id': 's1',
+                 'name': 'Lobby-AP'},  # no stats (offline)
+                {'type': 'ap', 'mac': 'aabbcc000004', 'site_id': 's2',
+                 'name': 'Inv-AP-4', 'hostname': 'host-4'},
+                {'type': 'ap', 'mac': 'aabbcc000005', 'site_id': 's2',
+                 'name': None, 'hostname': 'host-5'},  # offline, hostname only
             ],
             paged('/api/v1/sites/s1/maps', 1): [{'id': 'm1', 'name': 'Floor 1'}],
             paged('/api/v1/sites/s2/maps', 1): [],
-            self.ORG_STATS_PATH: (self.S1_STATS + self.S2_STATS
-                                  if org_stats is None else org_stats),
+            self.ORG_STATS_PATH: (
+                self.S1_STATS + self.S2_STATS + [
+                    {'mac': 'aabbcc000004', 'site_id': 's2', 'name': None},
+                ] if org_stats is None else org_stats),
             paged('/api/v1/sites/s1/stats/devices?type=ap', 1): self.S1_STATS,
-            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): self.S2_STATS,
+            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): self.S2_STATS + [
+                {'mac': 'aabbcc000004', 'name': None},  # null stats name
+            ],
         })
 
     def test_org_wide_uses_single_org_stats_query(self):
@@ -494,11 +503,12 @@ class TestExport(unittest.TestCase):
             out = Path(tmp) / 'out.csv'
             path, count = be.export_bssids(
                 self._make_api(), 'o1', 'My Org', self.SITES, None, out)
-            self.assertEqual(count, 3)
+            self.assertEqual(count, 5)
             with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual([r['AP_MAC'] for r in rows],
-                             ['aabbcc000001', 'aabbcc000002', 'aabbcc000003'])
+                             ['aabbcc000001', 'aabbcc000002', 'aabbcc000003',
+                              'aabbcc000004', 'aabbcc000005'])
             self.assertEqual(rows[0]['NAME'], 'AP-1')
             self.assertEqual(rows[0]['MAP'], 'Floor 1')
             self.assertEqual(rows[0]['SITE'], 'HQ')
@@ -507,7 +517,10 @@ class TestExport(unittest.TestCase):
             self.assertEqual(rows[0]['SWITCH_PORT'], 'ge-0/0/1')
             self.assertEqual(rows[1]['NAME'], 'AP-2')
             self.assertEqual(rows[1]['RADIO_MACS'], '')
-            self.assertEqual(rows[2]['NAME'], '')  # offline AP: inventory only
+            self.assertEqual(rows[2]['NAME'], 'Lobby-AP')  # offline: inventory name
+            self.assertEqual(rows[2]['RADIO_MACS'], '')
+            self.assertEqual(rows[3]['NAME'], 'Inv-AP-4')  # null stats name
+            self.assertEqual(rows[4]['NAME'], 'host-5')  # hostname fallback
 
     def test_device_stats_second_page_lands_in_csv(self):
         stats_path = '/api/v1/sites/s1/stats/devices?type=ap'
@@ -589,18 +602,18 @@ class TestExport(unittest.TestCase):
 
     def test_null_stats_mac_is_skipped(self):
         api = self._make_api()
-        api.responses[paged('/api/v1/sites/s1/stats/devices?type=ap', 1)].insert(
-            0, {'mac': None, 'name': 'ghost'})
-        api.responses[paged('/api/v1/sites/s2/stats/devices?type=ap', 1)].append(
-            {'name': 'no-mac'})
+        api.responses[self.ORG_STATS_PATH].insert(
+            0, {'mac': None, 'name': 'ghost', 'site_id': 's1'})
+        api.responses[self.ORG_STATS_PATH].append({'name': 'no-mac', 'site_id': 's2'})
         with tempfile.TemporaryDirectory() as tmp:
             out = Path(tmp) / 'out.csv'
             path, count = be.export_bssids(api, 'o1', 'My Org', self.SITES, None, out)
-            self.assertEqual(count, 3)
+            self.assertEqual(count, 5)
             with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
             self.assertEqual(rows[0]['NAME'], 'AP-1')
-            self.assertEqual(rows[2]['NAME'], '')
+            self.assertNotIn('ghost', [r['NAME'] for r in rows])
+            self.assertNotIn('no-mac', [r['NAME'] for r in rows])
 
     def test_maps_past_first_page(self):
         api = self._make_api()
@@ -621,10 +634,10 @@ class TestExport(unittest.TestCase):
             out = Path(tmp) / 'out.csv'
             path, count = be.export_bssids(
                 self._make_api(), 'o1', 'My Org', self.SITES, {'s2'}, out)
-            self.assertEqual(count, 1)
+            self.assertEqual(count, 3)
             with open(path, newline='', encoding='utf-8-sig') as f:
                 rows = list(csv.DictReader(f))
-            self.assertEqual(rows[0]['SITE'], 'Branch')
+            self.assertEqual({r['SITE'] for r in rows}, {'Branch'})
 
     def test_empty_scope_raises(self):
         with self.assertRaises(be.ConfigError):
