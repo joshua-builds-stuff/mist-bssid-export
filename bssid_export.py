@@ -25,13 +25,17 @@ non-interactive CLI:
     python bssid_export.py --list-sites          # show org sites
     python bssid_export.py --list-groups         # show org site groups
 
-Configuration comes from a .env file (see .env.example):
+Configuration comes from a .env file (see .env.example). Only these keys
+are loaded; every other line is left unread:
+
     MIST_API_TOKEN  - Mist API token
     MIST_ORG_ID     - organization ID
-    MIST_API_URL    - full API base URL (e.g. https://api.mist.com), or
+    MIST_API_URL    - https URL whose hostname is a known Mist cloud, or
     MIST_CLOUD      - cloud shorthand (global01, emea01, apac02, ...)
 
-Real environment variables take precedence over .env values.
+Process environment values for those four keys take precedence over .env.
+The API session calls https:// plus the allowlisted hostname only, and it
+does not apply proxy or CA settings from the environment.
 """
 
 import argparse
@@ -99,11 +103,13 @@ class ConfigError(Exception):
 # --------------------------------------------------------------------------
 
 def load_env(env_path: Path) -> bool:
-    """Load KEY=VALUE pairs from a .env file into os.environ.
+    """Load Mist settings from a .env file into os.environ.
 
-    Existing environment variables are not overridden. Returns True if the
-    file existed and was read. Unquoted inline comments (' # ...') are
-    stripped; quote a value to keep a literal '#'.
+    Only MIST_API_TOKEN, MIST_ORG_ID, MIST_API_URL, and MIST_CLOUD are
+    copied. Other keys are left unread. Existing environment variables are
+    not overridden. Returns True if the file existed and was read. Unquoted
+    inline comments (' # ...') are stripped; quote a value to keep a
+    literal '#'.
     """
     if not env_path.is_file():
         return False
@@ -216,7 +222,12 @@ def load_config(env_path: Path | None) -> dict:
 # --------------------------------------------------------------------------
 
 class MistSession:
-    """Mist API session with connection reuse and retry on 429/5xx."""
+    """Mist API session with connection reuse and retry on 429/5xx.
+
+    ``base`` is ``https://`` plus the allowlisted hostname from ``api_url``.
+    The underlying requests session has ``trust_env`` disabled, so proxy
+    and CA environment variables are left unused.
+    """
 
     def __init__(self, api_url: str, api_token: str):
         validate_api_url(api_url)
