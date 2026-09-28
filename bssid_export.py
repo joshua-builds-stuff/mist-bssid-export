@@ -324,11 +324,11 @@ def validate_credentials(api: MistSession, org_id: str) -> str:
 
 
 def fetch_sites(api: MistSession, org_id: str) -> list[dict]:
-    return api.get_json_list(f"/api/v1/orgs/{org_id}/sites")
+    return api.get_all_pages(f"/api/v1/orgs/{org_id}/sites")
 
 
 def fetch_site_groups(api: MistSession, org_id: str) -> list[dict]:
-    return api.get_json_list(f"/api/v1/orgs/{org_id}/sitegroups")
+    return api.get_all_pages(f"/api/v1/orgs/{org_id}/sitegroups")
 
 
 def fetch_inventory_aps(api: MistSession, org_id: str) -> dict[str, dict]:
