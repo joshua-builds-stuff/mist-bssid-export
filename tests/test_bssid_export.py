@@ -298,13 +298,13 @@ class TestExport(unittest.TestCase):
             ],
             '/api/v1/sites/s1/maps': [{'id': 'm1', 'name': 'Floor 1'}],
             '/api/v1/sites/s2/maps': [],
-            '/api/v1/sites/s1/stats/devices?type=ap': [
+            paged('/api/v1/sites/s1/stats/devices?type=ap', 1): [
                 {'mac': 'aabbcc000001', 'name': 'AP-1', 'map_id': 'm1',
                  'radio_stat': {'band_24': {'mac': 'radio24'}, 'band_5': {'mac': 'radio5'}},
                  'lldp_stat': {'system_name': 'sw1', 'port_id': 'ge-0/0/1'}},
                 {'mac': 'ddeeff000009', 'name': 'not-in-inventory'},
             ],
-            '/api/v1/sites/s2/stats/devices?type=ap': [
+            paged('/api/v1/sites/s2/stats/devices?type=ap', 1): [
                 {'mac': 'AA:BB:CC:00:00:02', 'name': 'AP-2', 'radio_stat': None,
                  'lldp_stat': None},
             ],
@@ -334,6 +334,32 @@ class TestExport(unittest.TestCase):
             self.assertEqual(rows[1]['NAME'], 'AP-2')
             self.assertEqual(rows[1]['RADIO_MACS'], '')
             self.assertEqual(rows[2]['NAME'], '')  # offline AP: inventory only
+
+    def test_device_stats_second_page_lands_in_csv(self):
+        stats_path = '/api/v1/sites/s1/stats/devices?type=ap'
+        api = FakeApi({
+            f'/api/v1/orgs/o1/inventory?limit={be.INVENTORY_PAGE_SIZE}&page=1': [
+                {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
+                {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's1'},
+            ],
+            '/api/v1/sites/s1/maps': [],
+            # Server applies a 1-item page even though 1000 was requested
+            paged(stats_path, 1): FakeResponse(
+                [{'mac': 'aabbcc000001', 'name': 'AP-1',
+                  'radio_stat': {'band_5': {'mac': 'r1'}}}],
+                {'X-Page-Total': '2', 'X-Page-Limit': '1'}),
+            paged(stats_path, 2): FakeResponse(
+                [{'mac': 'aabbcc000002', 'name': 'AP-2',
+                  'radio_stat': {'band_5': {'mac': 'r2'}}}],
+                {'X-Page-Total': '2', 'X-Page-Limit': '1'}),
+        })
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(
+                api, 'o1', 'My Org', self.SITES, None, Path(tmp) / 'out.csv')
+            with open(path, newline='', encoding='utf-8') as f:
+                rows = list(csv.DictReader(f))
+        self.assertEqual([r['RADIO_MACS'] for r in rows], ['r1', 'r2'])
+        self.assertEqual(rows[1]['NAME'], 'AP-2')
 
     def test_scoped_export(self):
         with tempfile.TemporaryDirectory() as tmp:

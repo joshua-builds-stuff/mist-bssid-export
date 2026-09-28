@@ -507,7 +507,7 @@ def export_bssids(
 
         device_stats = []
         try:
-            device_stats = api.get_json_list(
+            device_stats = api.get_all_pages(
                 f"/api/v1/sites/{site_id}/stats/devices?type=ap"
             )
         except Exception as e:
