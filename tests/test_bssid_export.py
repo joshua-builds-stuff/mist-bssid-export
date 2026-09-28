@@ -235,6 +235,24 @@ class TestMistSession(unittest.TestCase):
         self.assertFalse(session.session.trust_env)
 
 
+    def test_quoted_value_with_inline_comment(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            env_file = Path(tmp) / '.env'
+            env_file.write_text(
+                'MIST_API_TOKEN="tok#with#hash"  # production token\n'
+                "MIST_ORG_ID='org-1'  # id\n"
+                'MIST_CLOUD="global01"\n',
+                encoding='utf-8',
+            )
+            with patch.dict(os.environ, {}, clear=False):
+                for key in ('MIST_API_TOKEN', 'MIST_ORG_ID', 'MIST_CLOUD'):
+                    os.environ.pop(key, None)
+                be.load_env(env_file)
+                self.assertEqual(os.environ['MIST_API_TOKEN'], 'tok#with#hash')
+                self.assertEqual(os.environ['MIST_ORG_ID'], 'org-1')
+                self.assertEqual(os.environ['MIST_CLOUD'], 'global01')
+
+
 class TestResolveScope(unittest.TestCase):
     SITES = [
         {'id': 'id-hq', 'name': 'HQ'},
