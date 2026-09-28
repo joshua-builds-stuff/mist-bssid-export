@@ -64,6 +64,8 @@ _SHELL_ENV = {k: os.environ[k] for k in
 TIMEOUT = (5, 15)
 MAX_RETRIES = 3
 INVENTORY_PAGE_SIZE = 1000
+# Mist list endpoints accept limit 1-1000 and report paging in X-Page-* headers
+PAGE_SIZE = 1000
 
 CLOUD_ENDPOINTS = {
     'global01': 'https://api.mist.com',
@@ -252,9 +254,47 @@ class MistSession:
         raise RuntimeError("unreachable")  # pragma: no cover
 
     def get_json_list(self, path: str) -> list:
-        """GET a path and return the JSON body, coerced to a list."""
-        data = self.get(path).json()
-        return data if isinstance(data, list) else []
+        """GET a path and return the JSON body, which must be a list."""
+        return _json_list(self.get(path), path)
+
+    def get_all_pages(self, path: str, page_size: int = PAGE_SIZE) -> list:
+        """GET every page of a paginated list endpoint.
+
+        Stops once X-Page-Total items have been collected. Without that
+        header, stops on an empty page or one shorter than the server's
+        X-Page-Limit (the server may cap the requested limit lower).
+        """
+        sep = '&' if '?' in path else '?'
+        items: list = []
+        page = 1
+        while True:
+            resp = self.get(f"{path}{sep}limit={page_size}&page={page}")
+            data = _json_list(resp, path)
+            items.extend(data)
+            if not data:
+                break
+            total = _int_header(resp, 'X-Page-Total')
+            if total is not None:
+                if len(items) >= total:
+                    break
+            elif len(data) < (_int_header(resp, 'X-Page-Limit') or page_size):
+                break
+            page += 1
+        return items
+
+
+def _json_list(resp: requests.Response, path: str) -> list:
+    data = resp.json()
+    if not isinstance(data, list):
+        raise requests.exceptions.InvalidJSONError(
+            f"Expected a JSON list from {path}, got {type(data).__name__}",
+            response=resp)
+    return data
+
+
+def _int_header(resp: requests.Response, name: str) -> int | None:
+    value = str(resp.headers.get(name, '')).strip()
+    return int(value) if value.isdigit() else None
 
 
 # --------------------------------------------------------------------------
