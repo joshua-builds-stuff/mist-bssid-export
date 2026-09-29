@@ -151,14 +151,7 @@ def resolve_api_url() -> str:
     """
     url = os.environ.get('MIST_API_URL', '').strip()
     cloud = os.environ.get('MIST_CLOUD', '').strip()
-    cloud_url = ''
-    if cloud:
-        key = re.sub(r'[\s_-]', '', cloud.lower())
-        if key in CLOUD_ENDPOINTS:
-            cloud_url = CLOUD_ENDPOINTS[key]
-        else:
-            # Allow a bare hostname like api.eu.mist.com
-            cloud_url = cloud if cloud.lower().startswith('http') else f'https://{cloud}'
+    cloud_url = _cloud_to_url(cloud) if cloud else ''
     if url and cloud_url and url.rstrip('/') != cloud_url.rstrip('/'):
         raise ConfigError(
             f"MIST_API_URL ({url}) and MIST_CLOUD ({cloud}) point at different "
@@ -172,6 +165,16 @@ def resolve_api_url() -> str:
         )
     validate_api_url(final)
     return final.rstrip('/')
+
+
+def _cloud_to_url(cloud: str) -> str:
+    """Map a MIST_CLOUD shorthand or bare hostname to its https:// base URL."""
+    cloud = cloud.strip()
+    key = re.sub(r'[\s_-]', '', cloud.lower())
+    if key in CLOUD_ENDPOINTS:
+        return CLOUD_ENDPOINTS[key]
+    # Allow a bare hostname like api.eu.mist.com
+    return cloud if cloud.lower().startswith('http') else f'https://{cloud}'
 
 
 def validate_api_url(api_url: str) -> None:
@@ -747,14 +750,16 @@ def shadowing_env_vars(api_url: str, api_token: str, org_id: str) -> list[str]:
     Real environment variables take precedence over .env, so a shell export
     that disagrees with what the wizard just saved silently wins next launch.
     """
-    saved = {'MIST_API_TOKEN': api_token, 'MIST_ORG_ID': org_id, 'MIST_API_URL': api_url}
+    saved = {'MIST_API_TOKEN': api_token, 'MIST_ORG_ID': org_id}
     shadowing = [key for key, val in saved.items()
                  if key in _SHELL_ENV and _SHELL_ENV[key] != val]
-    if 'MIST_CLOUD' in _SHELL_ENV:
-        key = re.sub(r'[\s_-]', '', _SHELL_ENV['MIST_CLOUD'].lower())
-        resolved = CLOUD_ENDPOINTS.get(key, _SHELL_ENV['MIST_CLOUD'])
-        if resolved.rstrip('/') != api_url.rstrip('/'):
-            shadowing.append('MIST_CLOUD')
+    saved_url = api_url.rstrip('/')
+    if ('MIST_API_URL' in _SHELL_ENV
+            and _SHELL_ENV['MIST_API_URL'].strip().rstrip('/') != saved_url):
+        shadowing.append('MIST_API_URL')
+    if ('MIST_CLOUD' in _SHELL_ENV
+            and _cloud_to_url(_SHELL_ENV['MIST_CLOUD']).rstrip('/') != saved_url):
+        shadowing.append('MIST_CLOUD')
     return shadowing
 
 
