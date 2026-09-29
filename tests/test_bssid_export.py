@@ -827,6 +827,15 @@ class TestInteractiveHelpers(unittest.TestCase):
         with patch.object(be, '_SHELL_ENV', {'MIST_CLOUD': 'global01'}):
             # shell MIST_CLOUD agrees with the saved URL — no warning
             self.assertEqual(be.shadowing_env_vars('https://api.mist.com', 't', 'o'), [])
+        with patch.object(be, '_SHELL_ENV', {'MIST_CLOUD': 'api.mist.com'}):
+            # bare host resolves to the same cloud as the saved URL
+            self.assertEqual(be.shadowing_env_vars('https://api.mist.com', 't', 'o'), [])
+        with patch.object(be, '_SHELL_ENV', {'MIST_API_URL': 'https://api.mist.com/'}):
+            # trailing slash names the same cloud
+            self.assertEqual(be.shadowing_env_vars('https://api.mist.com', 't', 'o'), [])
+        with patch.object(be, '_SHELL_ENV', {'MIST_API_URL': 'https://api.eu.mist.com'}):
+            self.assertEqual(be.shadowing_env_vars('https://api.mist.com', 't', 'o'),
+                             ['MIST_API_URL'])
         with patch.object(be, '_SHELL_ENV', {}):
             self.assertEqual(be.shadowing_env_vars('https://api.mist.com', 't', 'o'), [])
 
