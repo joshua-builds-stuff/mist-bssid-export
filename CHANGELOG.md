@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-29 — minor
+
+Org AP inventory uses the same page headers as the other Mist lists, and
+interactive setup warns about a shell cloud setting only when it names a
+different cloud than the URL just saved. Install steps, the four `.env`
+keys, and the allowlisted cloud hosts are unchanged.
+
+### Fixed
+
+- Org AP inventory (`GET /api/v1/orgs/{org_id}/inventory?type=ap`) is
+  paged with the shared list pager, 1000 devices per page. The read
+  follows `X-Page-Total` and `X-Page-Limit` and no longer stops on a
+  short page while `X-Page-Total` has not been reached. After every page
+  is collected, a row that is not an AP, has no site, or has no MAC is
+  still omitted (#36, #39).
+- Interactive setup's warning about OS environment variables that will
+  override the saved `.env` compares cloud settings the same way startup
+  does. Shell `MIST_API_URL` is compared after stripping whitespace and a
+  trailing `/`. Shell `MIST_CLOUD` is resolved the same way as startup
+  (shorthand with case, spaces, underscores, and hyphens folded; a bare
+  hostname prefixed with `https://`; or a value that already starts with
+  `http`), and a trailing `/` on that result is ignored. `MIST_API_TOKEN`
+  and `MIST_ORG_ID` are still compared exactly. A shell value that names
+  the saved cloud does not warn (#37, #40).
+
 ## 2026-09-28 — minor
 
 Security fixes for the Mist API session, and export corrections for
