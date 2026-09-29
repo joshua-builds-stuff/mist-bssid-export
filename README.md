@@ -61,6 +61,19 @@ four keys override `.env`. Save `.env` as plain UTF-8 (UTF-8 with BOM also
 works; UTF-16 — what PowerShell 5.1 `>` redirection produces — is rejected
 with a clear error).
 
+Interactive setup writes `.env`, then warns when a variable already set
+in the OS environment will override that file on the next launch.
+`MIST_API_TOKEN` and `MIST_ORG_ID` are compared exactly. `MIST_API_URL` is
+compared after stripping whitespace and a trailing `/` — it is not
+rewritten into another URL. `MIST_CLOUD` is resolved the same way startup
+resolves it (a known shorthand, with case ignored and spaces, underscores,
+and hyphens dropped; a bare hostname prefixed with `https://`; or a value
+that already starts with `http`), and a trailing `/` on that result is
+ignored. The warning names only variables that still differ, so
+a shell setting that names the cloud just saved does not warn. Unset the
+named variables, or the values just entered do not take effect next
+launch. The same rules are in [docs/usage.md](docs/usage.md).
+
 Unquoted values are cut at an inline comment (` #`). A single- or
 double-quoted value keeps everything inside the quotes, including `#`, and
 a comment after the closing quote is ignored. Quote a token that contains
@@ -152,7 +165,9 @@ With no arguments the tool opens a menu (export entire org / selected
 sites / a site group, list sites/groups, reconfigure credentials). If no
 valid configuration exists yet, it walks you through org ID, API token,
 and cloud selection, validates them against the cloud, and saves `.env`
-next to the script. Any argument (other than `--env`) switches to
+next to the script. A shell variable that will override that file is
+named in a warning, using the comparison in Setup above. Any argument
+(other than `--env`) switches to
 non-interactive CLI mode. In the menu, a configuration or API error is
 printed and the menu stays open; the exit codes below apply to CLI mode.
 
@@ -248,10 +263,14 @@ cut the token short. The same rules are collected in
 ## Notes
 
 - Only APs assigned to a site are exported (unassigned inventory has no
-  radio stats). Org inventory is requested with `type=ap` and paged;
-  a row that is not an AP, has no site, or has no MAC is omitted.
-- Org sites, site groups, site maps, and device stats are read page by
-  page, so a site, floorplan, or AP past the first page is still exported.
+  radio stats). Org inventory is requested with `type=ap` and paged like
+  the other lists: up to 1000 per page, following `X-Page-Total` and
+  `X-Page-Limit`. A non-empty short page does not end the inventory while
+  `X-Page-Total` is set and has not been reached. After every page is
+  read, a row that is not an AP, has no site, or has no MAC is omitted.
+- Org sites, site groups, site maps, device stats, and org inventory are
+  read page by page, so a site, floorplan, or AP past the first page is
+  still exported.
 - A device-stats row whose MAC is null, missing, or not a string is
   skipped. The export continues. An assigned AP that never appears in
   stats is still written, with an empty `RADIO_MACS`.

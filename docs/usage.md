@@ -76,10 +76,13 @@ otherwise a short backoff). After the last attempt the error propagates.
 Only APs assigned to a site are exported. Unassigned inventory has no
 radio stats.
 
-**Inventory.** `GET /api/v1/orgs/{org_id}/inventory?type=ap`, 1000 devices
-per page, until a page is empty or shorter than 1000. A row that is not
-an AP, has no `site_id`, or has no MAC is dropped. The inventory `name`,
-or else `hostname`, is kept for the `NAME` fallback below.
+**Inventory.** `GET /api/v1/orgs/{org_id}/inventory?type=ap` is read with
+the pager below, 1000 devices per page. It follows `X-Page-Total` and
+`X-Page-Limit`. A non-empty page shorter than 1000 does not end the
+inventory while fewer than `X-Page-Total` devices have been collected.
+After every page is collected, a row that is not an AP, has no
+`site_id`, or has no MAC is dropped. The inventory `name`, or else
+`hostname`, is kept for the `NAME` fallback below.
 
 **Sites and site groups.** `GET /api/v1/orgs/{org_id}/sites` and
 `GET /api/v1/orgs/{org_id}/sitegroups` are read with the pager below, so
@@ -103,12 +106,13 @@ per-site endpoint so radio MACs are not left blank.
 stats query. Each selected site is read from
 `GET /api/v1/sites/{site_id}/stats/devices?type=ap`, paged the same way.
 
-**Pager.** Those list calls (sites, site groups, maps, org stats, and
-per-site device stats) request up to 1000 items per page. The tool stops
-once it has collected `X-Page-Total` items. Without that header it stops
-on an empty page, or on a page shorter than `X-Page-Limit` (or shorter
-than 1000 when the server does not send that header). Inventory paging
-is the separate loop described above; it does not read `X-Page-Total`.
+**Pager.** Those list calls (org AP inventory, sites, site groups, maps,
+org stats, and per-site device stats) request up to 1000 items per page.
+The tool stops once it has collected `X-Page-Total` items. A non-empty
+page shorter than 1000 does not stop the read while that total has not
+been reached. Without `X-Page-Total` it stops on an empty page, or on a
+page shorter than `X-Page-Limit` (or shorter than 1000 when the server
+does not send that header). An empty page stops the read either way.
 
 ## Names, maps, and missing MACs
 
@@ -185,3 +189,41 @@ ignored: `MIST_API_TOKEN="tok#with#hash"  # production` loads
 `tok#with#hash`. Quote a token that contains `#`.
 
 Save the file as UTF-8. UTF-8 with a BOM is accepted. UTF-16 is rejected.
+
+## Shell values after interactive setup
+
+Interactive setup writes `MIST_API_TOKEN`, `MIST_ORG_ID`, and
+`MIST_API_URL` (the cloud you picked). It does not write `MIST_CLOUD`.
+Process environment values still override that file on the next launch.
+When one of them will, setup prints a warning naming each variable and
+tells you to unset it or the values just entered will not take effect.
+
+`MIST_API_TOKEN` and `MIST_ORG_ID` are compared exactly, character for
+character. A different token or org ID warns.
+
+`MIST_API_URL` is compared after stripping whitespace and a trailing
+`/`. The shell value is not turned into another URL. These name the same
+cloud and do not warn when setup saved `https://api.mist.com`:
+
+- `https://api.mist.com/`
+- `https://api.mist.com`
+
+A different host still warns. `https://api.eu.mist.com` against that
+saved URL warns `MIST_API_URL`.
+
+`MIST_CLOUD` is resolved the same way startup resolves it, then a
+trailing `/` is ignored, and the result is compared to the saved URL:
+
+- a known shorthand (`global01`, `emea01`, `apac02`, and the other names
+  in the README table) maps to that cloud's `https://` URL. Lookup
+  ignores case and drops spaces, underscores, and hyphens, so
+  `Global 01`, `global-01`, and `global_01` are `global01`
+- a bare hostname is prefixed with `https://` (`api.mist.com` becomes
+  `https://api.mist.com`)
+- a value that already starts with `http` is kept as that URL
+
+`MIST_CLOUD=api.mist.com` or `MIST_CLOUD=global01` does not warn when
+setup saved `https://api.mist.com`. `MIST_CLOUD=emea01` against that
+saved URL does warn. A shell value that names the saved cloud does not
+warn; the next launch still prefers the process environment, and
+startup treats the two forms as the same cloud.
