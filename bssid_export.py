@@ -354,18 +354,8 @@ def fetch_inventory_aps(api: MistSession, org_id: str) -> dict[str, dict]:
     for APs
     that are assigned to a site. Unassigned APs have no stats or BSSIDs.
     """
-    all_devices = []
-    page = 1
-    while True:
-        data = api.get_json_list(
-            f"/api/v1/orgs/{org_id}/inventory?type=ap&limit={INVENTORY_PAGE_SIZE}&page={page}"
-        )
-        if not data:
-            break
-        all_devices.extend(data)
-        if len(data) < INVENTORY_PAGE_SIZE:
-            break
-        page += 1
+    all_devices = api.get_all_pages(
+        f"/api/v1/orgs/{org_id}/inventory?type=ap", page_size=INVENTORY_PAGE_SIZE)
 
     assigned_aps = {}
     for d in all_devices:

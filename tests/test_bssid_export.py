@@ -428,15 +428,42 @@ class TestFetchInventoryAps(unittest.TestCase):
             {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': None},       # unassigned
             {'type': 'ap', 'mac': '', 'site_id': 's1'},                   # no mac
         ]
+        inv = '/api/v1/orgs/o1/inventory?type=ap'
         api = FakeApi({
-            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=1': page1,
-            f'/api/v1/orgs/o1/inventory?type=ap&limit={be.INVENTORY_PAGE_SIZE}&page=2': page2,
+            paged(inv, 1, size=be.INVENTORY_PAGE_SIZE): page1,
+            paged(inv, 2, size=be.INVENTORY_PAGE_SIZE): page2,
         })
         aps = be.fetch_inventory_aps(api, 'o1')
         self.assertEqual(len(aps), be.INVENTORY_PAGE_SIZE + 1)
         self.assertIn('aabbcc000001', aps)
         self.assertEqual(aps['aabbcc000001']['raw_mac'], 'AA:BB:CC:00:00:01')
         self.assertEqual(aps['aabbcc000001']['site_id'], 's2')
+
+    def test_server_capped_short_page_continues(self):
+        # Server caps the page at 2 (below the requested 1000); X-Page-Total says more remain
+        inv = '/api/v1/orgs/o1/inventory?type=ap'
+        hdr = {'X-Page-Total': '3', 'X-Page-Limit': '2'}
+        api = FakeApi({
+            paged(inv, 1, size=be.INVENTORY_PAGE_SIZE): FakeResponse([
+                {'type': 'ap', 'mac': 'aabbcc000001', 'site_id': 's1'},
+                {'type': 'ap', 'mac': 'aabbcc000002', 'site_id': 's1'},
+            ], hdr),
+            paged(inv, 2, size=be.INVENTORY_PAGE_SIZE): FakeResponse([
+                {'type': 'ap', 'mac': 'aabbcc000003', 'site_id': 's1', 'name': 'Late-AP'},
+            ], hdr),
+            paged('/api/v1/sites/s1/maps', 1): [],
+            paged(
+                f'/api/v1/orgs/o1/stats/devices?type=ap&fields={be.ORG_STATS_FIELDS}', 1
+            ): [],
+        })
+        aps = be.fetch_inventory_aps(api, 'o1')
+        self.assertEqual(set(aps), {'aabbcc000001', 'aabbcc000002', 'aabbcc000003'})
+        sites = [{'id': 's1', 'name': 'Store 1'}]
+        with tempfile.TemporaryDirectory() as tmp:
+            path, _ = be.export_bssids(api, 'o1', 'Org', sites, None, Path(tmp) / 'o.csv')
+            with open(path, newline='', encoding='utf-8-sig') as f:
+                names = {r['NAME'] for r in csv.DictReader(f)}
+        self.assertIn('Late-AP', names)
 
 
 class TestExport(unittest.TestCase):
