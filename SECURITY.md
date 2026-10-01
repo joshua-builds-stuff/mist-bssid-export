@@ -45,11 +45,23 @@ Every other line is left unread, including proxy and CA variables. If
 one of the four keys is already set in the process environment, `.env`
 does not replace it.
 
-Interactive setup writes those values to a plaintext `.env` next to the
-script (or to the path given with `--env`). `.env` is listed in
-`.gitignore`. Treat the file as a secret: it contains the API token.
-Do not commit it, and do not pass it to people who should not call the
-API as you.
+Interactive setup writes `MIST_API_TOKEN`, `MIST_ORG_ID`, and
+`MIST_API_URL` to a plaintext `.env` next to the script (or to the path
+given with `--env`). The file is saved with Unix mode `0600`: the owner
+can read and write it, and other users on the host cannot. A new file is created with that mode. An existing file at
+the same path is set to `0600` before the new token is written, including
+when the previous file was readable by the group or by everyone else.
+First-time setup, menu option 6 (Reconfigure credentials), and
+reconfigure after stored credentials fail all use this write.
+
+A `.env` created by copying `.env.example` keeps the permissions of that
+copy. On a shared Unix host, restrict that copy to your user before it
+contains the token. Loading `.env` for an export keeps the mode the file
+already has.
+
+`.env` is listed in `.gitignore`. Treat the file as a secret: it
+contains the API token. Do not commit it, and do not pass it to people
+who should not call the API as you.
 
 Unquoted values are truncated at the first ` #` (an inline comment).
 A token that contains `#` must be quoted, single or double, or the

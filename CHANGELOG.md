@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-10-01 — minor
+
+Interactive setup saves `.env` so only the file owner can read and write
+it. Install steps, the four `.env` keys, and the allowlisted cloud hosts
+are unchanged.
+
+### Security
+
+- Interactive setup writes `.env` with Unix mode `0600` (owner read and
+  write). A new file is created with that mode, and an existing file is
+  set to `0600` before the new token, org ID, and cloud URL are written,
+  so another local user cannot read the token from a file setup just
+  saved. A `.env` created by copying `.env.example` keeps the permissions
+  of that copy (#1, #42).
+
 ## 2026-09-29 — minor
 
 Org AP inventory uses the same page headers as the other Mist lists, and

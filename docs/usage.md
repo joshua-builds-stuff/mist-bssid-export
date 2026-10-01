@@ -227,3 +227,23 @@ setup saved `https://api.mist.com`. `MIST_CLOUD=emea01` against that
 saved URL does warn. A shell value that names the saved cloud does not
 warn; the next launch still prefers the process environment, and
 startup treats the two forms as the same cloud.
+
+## Who can read the saved `.env`
+
+Interactive setup saves `.env` with Unix mode `0600`. The owner can read
+and write the file. Other users on the host cannot. A new file is
+created with that mode. When a file is already at that path, setup sets
+it to `0600` before writing `MIST_API_TOKEN`, `MIST_ORG_ID`, and
+`MIST_API_URL`.
+
+The write runs in three places:
+
+- the menu has no valid configuration yet (first run, or credentials
+  the tool cannot load)
+- stored credentials fail and you choose to reconfigure
+- menu option 6, Reconfigure credentials
+
+A `.env` you create by copying `.env.example` keeps the permissions of
+that copy. On a shared Unix host, restrict it to your user before it
+holds the token. An export that only reads `.env` keeps the mode the
+file already has. The same rules are in [SECURITY.md](../SECURITY.md).
