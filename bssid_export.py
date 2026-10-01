@@ -741,7 +741,10 @@ def write_env_file(env_path: Path, api_url: str, api_token: str, org_id: str) ->
         f"MIST_API_URL={api_url}\n"
     )
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    env_path.write_text(content, encoding='utf-8')
+    fd = os.open(env_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, 'w', encoding='utf-8') as env_file:
+        os.fchmod(fd, 0o600)  # Also restrict an existing .env before writing.
+        env_file.write(content)
 
 
 def shadowing_env_vars(api_url: str, api_token: str, org_id: str) -> list[str]:
