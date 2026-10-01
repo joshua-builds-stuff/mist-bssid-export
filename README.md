@@ -41,6 +41,10 @@ python bssid_export.py    # first run walks you through creating .env
 ```
 
 Or configure by hand: `copy .env.example .env` and edit it with your values.
+Interactive setup saves `.env` so only the file owner can read and write
+it (Unix mode `0600`). A hand-copied file keeps the permissions of that
+copy; on a shared Unix host, restrict it to your user before it holds
+the token.
 
 `.env` keys (these are the only keys the loader copies into the environment):
 
@@ -73,6 +77,13 @@ ignored. The warning names only variables that still differ, so
 a shell setting that names the cloud just saved does not warn. Unset the
 named variables, or the values just entered do not take effect next
 launch. The same rules are in [docs/usage.md](docs/usage.md).
+
+That write also limits who can read the file. Setup creates `.env` with
+mode `0600` (owner read and write). When a file is already at that path,
+setup sets it to `0600` before writing the new token, org ID, and cloud
+URL. First-time setup, menu option 6 (Reconfigure credentials), and
+reconfigure after stored credentials fail all use this write. A later
+export that only reads `.env` keeps the mode the file already has.
 
 Unquoted values are cut at an inline comment (` #`). A single- or
 double-quoted value keeps everything inside the quotes, including `#`, and
@@ -253,6 +264,12 @@ while the URL host stayed a Mist cloud. The loader now copies only
 session turns `trust_env` off, so proxy and CA variables already in the
 process stay unused too. See
 [Safe environment configuration](#safe-environment-configuration).
+
+**On-disk token.** Interactive setup used to create `.env` with the
+process umask. On a shared Unix host that left `MIST_API_TOKEN` readable
+by other local users. Setup now saves the file as owner read/write only
+(`0600`), and applies that mode to an existing file before the new token
+is written. See [SECURITY.md](SECURITY.md).
 
 Keep using a read-only token. Put one allowlisted cloud in `.env` (or in
 the process environment, which wins over `.env` for those four keys).
