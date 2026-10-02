@@ -47,12 +47,16 @@ does not replace it.
 
 Interactive setup writes `MIST_API_TOKEN`, `MIST_ORG_ID`, and
 `MIST_API_URL` to a plaintext `.env` next to the script (or to the path
-given with `--env`). The file is saved with Unix mode `0600`: the owner
-can read and write it, and other users on the host cannot. A new file is created with that mode. An existing file at
-the same path is set to `0600` before the new token is written, including
-when the previous file was readable by the group or by everyone else.
-First-time setup, menu option 6 (Reconfigure credentials), and
-reconfigure after stored credentials fail all use this write.
+given with `--env`). The new contents are written to a temporary file in
+the same directory and moved onto `.env`. The existing file is not
+emptied first. If the save fails, the previous `.env` is left as it was
+and the temporary file is removed. On Unix a successful save is mode
+`0600`: the owner can read and write it, and other users on the host
+cannot, including when the previous file was readable by the group or by
+everyone else. On Windows, `os.fchmod` is missing before Python 3.13 and
+`chmod` only toggles the read-only flag, so that mode change is
+best-effort. First-time setup, menu option 6 (Reconfigure credentials),
+and reconfigure after stored credentials fail all use this write.
 
 A `.env` created by copying `.env.example` keeps the permissions of that
 copy. On a shared Unix host, restrict that copy to your user before it

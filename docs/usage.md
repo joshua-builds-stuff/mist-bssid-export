@@ -230,11 +230,15 @@ startup treats the two forms as the same cloud.
 
 ## Who can read the saved `.env`
 
-Interactive setup saves `.env` with Unix mode `0600`. The owner can read
-and write the file. Other users on the host cannot. A new file is
-created with that mode. When a file is already at that path, setup sets
-it to `0600` before writing `MIST_API_TOKEN`, `MIST_ORG_ID`, and
-`MIST_API_URL`.
+Interactive setup saves `.env` by writing a temporary file in the same
+directory and moving it onto `.env`. The existing file is not emptied
+first. If the save fails, the previous `.env` is left as it was and the
+temporary file is removed. On Unix a successful save is mode `0600`: the
+owner can read and write the file, and other users on the host cannot.
+On Windows, `os.fchmod` is missing before Python 3.13 and `chmod` only
+toggles the read-only flag, so the mode change is best-effort. The save
+still replaces the whole file, including `MIST_API_TOKEN`, `MIST_ORG_ID`,
+and `MIST_API_URL`.
 
 The write runs in three places:
 

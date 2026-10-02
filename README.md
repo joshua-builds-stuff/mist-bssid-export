@@ -42,7 +42,7 @@ python bssid_export.py    # first run walks you through creating .env
 
 Or configure by hand: `copy .env.example .env` and edit it with your values.
 Interactive setup saves `.env` so only the file owner can read and write
-it (Unix mode `0600`). A hand-copied file keeps the permissions of that
+it on Unix (mode `0600`). A hand-copied file keeps the permissions of that
 copy; on a shared Unix host, restrict it to your user before it holds
 the token.
 
@@ -78,12 +78,19 @@ a shell setting that names the cloud just saved does not warn. Unset the
 named variables, or the values just entered do not take effect next
 launch. The same rules are in [docs/usage.md](docs/usage.md).
 
-That write also limits who can read the file. Setup creates `.env` with
-mode `0600` (owner read and write). When a file is already at that path,
-setup sets it to `0600` before writing the new token, org ID, and cloud
-URL. First-time setup, menu option 6 (Reconfigure credentials), and
-reconfigure after stored credentials fail all use this write. A later
+That write replaces `.env` only after the new file is complete. Setup
+writes the new contents to a temporary file in the same directory, then
+moves it onto `.env`. The existing file is not emptied first. If the
+save fails, the previous `.env` is left as it was and the temporary file
+is removed. First-time setup, menu option 6 (Reconfigure credentials),
+and reconfigure after stored credentials fail all use this write. A later
 export that only reads `.env` keeps the mode the file already has.
+
+On Unix a successful save is mode `0600` (owner read and write). On
+Windows, `os.fchmod` is missing before Python 3.13, and `chmod` only
+toggles the read-only flag, so that mode change is best-effort. A save
+still replaces the whole file. It does not leave an empty `.env` when
+`os.fchmod` is missing.
 
 Unquoted values are cut at an inline comment (` #`). A single- or
 double-quoted value keeps everything inside the quotes, including `#`, and
@@ -268,8 +275,11 @@ process stay unused too. See
 **On-disk token.** Interactive setup used to create `.env` with the
 process umask. On a shared Unix host that left `MIST_API_TOKEN` readable
 by other local users. Setup now saves the file as owner read/write only
-(`0600`), and applies that mode to an existing file before the new token
-is written. See [SECURITY.md](SECURITY.md).
+(`0600`) on Unix. The new contents are written to a temporary file and
+moved onto `.env`, so a failed save does not empty an existing file
+before the new token is in place. On Windows the mode change is
+best-effort (`os.fchmod` is missing before Python 3.13, and `chmod` only
+toggles the read-only flag). See [SECURITY.md](SECURITY.md).
 
 Keep using a read-only token. Put one allowlisted cloud in `.env` (or in
 the process environment, which wins over `.env` for those four keys).
