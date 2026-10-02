@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-10-02 — minor
+
+Interactive setup replaces `.env` only after the new file is fully
+written, so a failed save on Windows no longer wipes the token. Install
+steps, the four `.env` keys, and the allowlisted cloud hosts are
+unchanged.
+
+### Fixed
+
+- Interactive setup (first run, reconfigure, and menu option 6) writes
+  the new `.env` to a temporary file in the same directory and moves it
+  onto `.env`. The existing file is not truncated first. If the save
+  fails, the previous `.env` is left as it was and the temporary file is
+  removed. On Windows Python 3.10–3.12, where `os.fchmod` is missing, a
+  successful save still replaces the file in full instead of leaving it
+  empty and raising `AttributeError`. On Unix a successful save is still
+  mode `0600`. On Windows the mode change is best-effort (`chmod` only
+  toggles the read-only flag) (#44, #45).
+
 ## 2026-10-01 — minor
 
 Interactive setup saves `.env` so only the file owner can read and write
