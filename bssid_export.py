@@ -43,6 +43,7 @@ import csv
 import os
 import re
 import sys
+import tempfile
 import time
 import warnings
 from datetime import datetime
@@ -741,10 +742,28 @@ def write_env_file(env_path: Path, api_url: str, api_token: str, org_id: str) ->
         f"MIST_API_URL={api_url}\n"
     )
     env_path.parent.mkdir(parents=True, exist_ok=True)
-    fd = os.open(env_path, os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, 'w', encoding='utf-8') as env_file:
-        os.fchmod(fd, 0o600)  # Also restrict an existing .env before writing.
-        env_file.write(content)
+    # Write a sibling temp file and os.replace it so a failure never leaves a
+    # truncated .env. os.fchmod is missing on Windows before Python 3.13, and
+    # chmod there only toggles read-only, so permissions are best-effort.
+    fd, tmp_name = tempfile.mkstemp(prefix='.env.', suffix='.tmp', dir=env_path.parent)
+    try:
+        with os.fdopen(fd, 'w', encoding='utf-8') as env_file:
+            if hasattr(os, 'fchmod'):
+                os.fchmod(env_file.fileno(), 0o600)
+            env_file.write(content)
+            env_file.flush()
+            os.fsync(env_file.fileno())
+        try:
+            os.chmod(tmp_name, 0o600)
+        except OSError:
+            pass
+        os.replace(tmp_name, env_path)
+    except BaseException:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
 
 
 def shadowing_env_vars(api_url: str, api_token: str, org_id: str) -> list[str]:
